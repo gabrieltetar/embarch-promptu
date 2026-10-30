@@ -112,7 +112,14 @@ impl Answer {
         let mut b = o.opts.clone();
         a.sort_unstable();
         b.sort_unstable();
-        a == b && self.texts == o.texts && self.other == o.other && self.fallback == o.fallback
+        a == b && self.free_text() == o.free_text() && self.fallback == o.fallback
+    }
+
+    /// Its free text, trimmed and sorted: a fill's own words (`texts`) typed back as Other are the same words.
+    fn free_text(&self) -> Vec<&str> {
+        let mut t: Vec<&str> = self.texts.iter().chain(&self.other).map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        t.sort_unstable();
+        t
     }
 }
 

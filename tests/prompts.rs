@@ -219,6 +219,28 @@ fn a_fill_changed_back_is_no_change_and_an_emptied_multi_is_an_answer() {
 }
 
 #[test]
+fn a_free_text_fill_typed_back_is_no_change() {
+    // Review F18: the dialog sends a text fill's original back as `{other}`; the CLI kept it as the pass's text.
+    let s = Scratch::new("fill-text-revert");
+    let repo = s.repo("motor-fw", "main");
+    let ask = "implement the watchdog; read docs/watchdog.md first";
+    s.reply(json!({"pattern": "implement-issue", "confidence": 0.9, "alt": [], "flags": {},
+        "filled": {"read": {"value": "docs/watchdog.md", "source": "prompt", "evidence": "read docs/watchdog.md first"}},
+        "candidates": {}, "relevant": {"read": true}, "ambiguous": []}));
+    let out = s.json(&repo, &["prep", "--have", "none"], ask);
+    let fill = |out: &Value| out["filled"].as_array().unwrap().iter().find(|f| f["q"] == "read").cloned().unwrap();
+    let f = fill(&out);
+    assert_eq!(f["original"]["other"], "docs/watchdog.md", "{f}");
+    let run = out["run"].as_str().unwrap();
+    let n = s.json(&repo, &["next", run], &json!({"answers": {"read": {"other": "the datasheet"}}}).to_string());
+    assert_eq!(fill(&n)["changed"], true);
+    let n = s.json(&repo, &["next", run], &json!({"answers": {"read": {"other": "docs/watchdog.md"}}}).to_string());
+    assert_eq!(fill(&n)["changed"], false);
+    let r = s.json(&repo, &["render", run, "--rest", "recommended"], "{}");
+    assert!(r["footer"].as_str().unwrap().contains("read:prompt") && !r["footer"].as_str().unwrap().contains("read:prompt!"), "{}", r["footer"]);
+}
+
+#[test]
 fn a_bench_run_from_prep_to_render() {
     let s = Scratch::new("bench");
     let repo = s.repo("motor-fw", "feat/reworks");
