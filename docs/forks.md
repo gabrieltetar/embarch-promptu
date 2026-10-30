@@ -173,105 +173,127 @@ They used to be asked costliest gap first, then in pattern order, so `bench-sess
 
 ## Step 3: the chat, desk Start work, the Memory menu (2026-10-30)
 
-**All open.** Built in `embarch-promptu` (decisions 32–33), `embarch-chat` (its decisions 94–98, 11 reversed) and `embarch-desk` (its decision 67); each fork runs on the provisional default marked. Ranked by consequence.
+**Decided by the owner on 2026-10-30:** P1–P11, P13 and P14, each marked below and recorded as a numbered decision in `embarch-doc/embarch-promptu/decisions.md` (33 amended, 34–40). **P12 and P15 stay open** on their provisional defaults, and **P16–P17**, met building the Usage icon the owner added the same day (embarch-chat decision 99), are open. Built in `embarch-promptu` (decisions 32–33), `embarch-chat` (its decisions 94–99, 11 reversed) and `embarch-desk` (its decision 67). Ranked by consequence.
 
-### P1. Start work with no Promptu prompt: send the desk's starter, or leave it in the draft
+### P1. Start work with no Promptu prompt: send the desk's starter, or leave it in the draft — decided: (a)
+
+**Decided by the owner, 2026-10-30: (a).** Built as such: with Promptu off or not installed, Start work's starter waits in the draft, unsent. P1 and P2 differ on purpose. Decision 34.
 
 When the chat takes a Start work entry and Promptu is off on its card or not installed, there is no pass. Chat decision 11 sent the read-and-summarize starter; the owner reversed 11 to "the prompt lands in the draft, not sent" for the Promptu case.
 
-- **(a) The starter waits in the draft, unsent** — *provisional default.* One Enter sends it; nothing acts unasked. Changes what Start work does today for a chat with Promptu off.
+- **(a)** The starter waits in the draft, unsent. One Enter sends it; nothing acts unasked. Changes what Start work does today for a chat with Promptu off.
 - (b) Send it, as 11 did. Today's behaviour when Promptu is off.
 
 **Recommendation: (a)**, the same "nothing is sent" rule whether or not Promptu runs.
 
-### P2. Start work when the pass fails or is skipped
+### P2. Start work when the pass fails or is skipped — decided: (b)
+
+**Decided by the owner, 2026-10-30: (b).** Built: with Promptu on, a pass that fails or is skipped sends the starter, as chat decision 11 did; it was (a), provisional, until the pick. Decision 34.
 
 The pass ran and gave no prompt (a non-zero exit, a timeout, Esc while it read the issue).
 
-- **(a) The starter waits in the draft, with the one-line reason** — *provisional default.*
-- (b) Send the starter, as 11 did.
+- (a) The starter waits in the draft, with the one-line reason.
+- **(b)** Send the starter, as 11 did.
 - (c) Leave the draft empty.
 
 **Recommendation: (a).**
 
-### P3. What counts as a use in the Memory menu's "where it's used"
+### P3. What counts as a use in the Memory menu's "where it's used" — decided: (b)
+
+**Decided by the owner, 2026-10-30: (b).** Built: only a prompt the owner sent counts; `promptu render`'s output in a tool result does not (it also closed review finding F3). Decision 33, amended.
 
 Decision 33. Footers sit in the owner's sent messages (the chat's flow), but the terminal skill shows its prompt and never sends it as a message.
 
-- **(a) Sent messages, plus `promptu render`'s JSON in tool results, once per footer per transcript** — *provisional default.* A terminal run cancelled at "send as is" also counts.
-- (b) Sent messages only: the terminal's runs never count.
+- (a) Sent messages, plus `promptu render`'s JSON in tool results, once per footer per transcript. A terminal run cancelled at "send as is" also counts.
+- **(b)** Sent messages only: the terminal's runs never count.
 - (c) Also any tool output line starting `— promptu `: a run may count twice.
 
 **Recommendation: (a).**
 
-### P4. A pattern forced on the card, mid-task
+### P4. A pattern forced on the card, mid-task — decided: (a)
+
+**Decided by the owner, 2026-10-30: (a).** Built as such. Decision 35.
 
 The owner decided that a reply inside a running task never triggers the pass. The card's picker sets a pattern "for the next prompt", and the next prompt may be a reply.
 
-- **(a) A forced pattern lights the icon for the next prompt, a reply included, once** — *provisional default.* An explicit pick is not the automatic trigger.
+- **(a)** A forced pattern lights the icon for the next prompt, a reply included, once. An explicit pick is not the automatic trigger.
 - (b) Only at a task start: the pick waits for the next chat.
 
 **Recommendation: (a)**: otherwise a pick made mid-task does nothing visible.
 
-### P5. How the desk knows Promptu is installed (desk decision 67)
+### P5. How the desk knows Promptu is installed (desk decision 67) — decided: (a)
 
-- **(a) The `promptu` binary, executable, in `~/.local/share/embarch/bin/` or on the desk service's `PATH`** — *provisional default.* Known gap: a binary without the plugin types a `/promptu` Claude Code does not know.
+**Decided by the owner, 2026-10-30: (a).** Built as such. Decision 36, with embarch-desk decision 67.
+
+- **(a)** The `promptu` binary, executable, in `~/.local/share/embarch/bin/` or on the desk service's `PATH`. Known gap: a binary without the plugin types a `/promptu` Claude Code does not know.
 - (b) Also read Claude Code's installed-plugin list: another tool's file, no stable format.
 - (c) The desk's `promptu` setting only, no detection.
 
 **Recommendation: (a).**
 
-### P6. How the chat knows the bench tools are there (`--have embarch-api`)
+### P6. How the chat knows the bench tools are there (`--have embarch-api`) — decided: (a)
+
+**Decided by the owner, 2026-10-30: (a).** Built as such. Decision 36.
 
 A chat's first prompt goes before its `claude` starts, so its MCP list is not known yet.
 
-- **(a) The chat's CLI's MCP list once it has one (an `embarch-api` server not failed or disabled), else the `embarch-api` binary on `PATH`** — *provisional default.*
+- **(a)** The chat's CLI's MCP list once it has one (an `embarch-api` server not failed or disabled), else the `embarch-api` binary on `PATH`.
 - (b) The binary on `PATH` only.
 - (c) Read Claude Code's MCP configuration.
 - (d) A chat setting.
 
 **Recommendation: (a).**
 
-### P7. Start work's chip row when the default replaced the pick (decision 32)
+### P7. Start work's chip row when the default replaced the pick (decision 32) — decided: (a)
+
+**Decided by the owner, 2026-10-30: (a).** Built as such. Decision 37.
 
 When the model picks a `never` pattern or none, or the pass is offline, `--start` takes the `default` pattern and sets confidence to null, so the chip row opens first in the dialog, the default recommended.
 
-- **(a) The chip row opens; one Enter takes the default** — *provisional default.* The only way to switch pattern in the automatic Start work dialog.
+- **(a)** The chip row opens; one Enter takes the default. The only way to switch pattern in the automatic Start work dialog.
 - (b) No chip row: the default is taken silently.
 
 **Recommendation: (a).**
 
-### P8. What Esc keeps of the page on screen
+### P8. What Esc keeps of the page on screen — decided: (a)
+
+**Decided by the owner, 2026-10-30: (a).** Built as such. Decision 38.
 
 The design: "Esc keeps the partial answers". A terminal Esc drops the page on screen.
 
-- **(a) The pages already answered, plus the questions the owner touched on the page on screen** — *provisional default.* Untouched pre-selections become assumptions.
+- **(a)** The pages already answered, plus the questions the owner touched on the page on screen. Untouched pre-selections become assumptions.
 - (b) The pages already answered only, as the terminal does.
 - (c) Everything on screen, pre-selections included (then Esc is "Done").
 
 **Recommendation: (a).**
 
-### P9. The handoff card's dialog and the "Fresh chat with this handoff" chip
+### P9. The handoff card's dialog and the "Fresh chat with this handoff" chip — decided: (a)
+
+**Decided by the owner, 2026-10-30: (a).** Built as such. Decision 39.
 
 Chat decision 36's chip appears after a turn that answered a handoff request. The handoff pattern's own `save_to` may write the brief to a file.
 
-- **(a) The handoff pattern's prompt still marks the message as a handoff request, so the chip appears** — *provisional default.* With no fenced brief, the chip carries Claude's whole reply.
+- **(a)** The handoff pattern's prompt still marks the message as a handoff request, so the chip appears. With no fenced brief, the chip carries Claude's whole reply.
 - (b) No chip after Promptu's handoff: `save_to` decides where the brief goes.
 
 **Recommendation: (a)** until the weekly loop shows how the brief is used.
 
-### P10. A key for the pass on any draft
+### P10. A key for the pass on any draft — decided: (a)
+
+**Decided by the owner, 2026-10-30: (a).** No pass key: the indicator and its card instead. Decision 35.
 
 SYNTHESIS §12 seeded "Ctrl+Shift+Enter runs the pass", to check against VS Code's own bindings. Not built: the pass runs at a task start or with a forced pattern.
 
-- **(a) No key** — *provisional default.*
+- **(a)** No key.
 - (b) Ctrl+Shift+Enter runs the pass on whatever the draft holds, a reply included.
 
 **Recommendation: (a)** for now; (b) once the forced pattern shows it is wanted.
 
-### P11. Where the card's switches live
+### P11. Where the card's switches live — decided: (a)
 
-- **(a) The extension's own state, for every window** — *provisional default.* Never the owner's settings, as chat decision 82 keeps effort out of them.
+**Decided by the owner, 2026-10-30: (a).** Built as such. Decision 35.
+
+- **(a)** The extension's own state, for every window. Never the owner's settings, as chat decision 82 keeps effort out of them.
 - (b) VS Code settings (`embarchChat.promptu.enabled`, `.quick`), syncable and visible in the settings UI.
 - (c) Per chat.
 
@@ -286,18 +308,22 @@ After a pass ran, failed or was skipped, the next Enter sends, even if the owner
 
 **Recommendation: (a).**
 
-### P13. Overriding a pre-filled answer in the dialog
+### P13. Overriding a pre-filled answer in the dialog — decided: (b)
+
+**Decided by the owner, 2026-10-30: (b).** Built now: a pre-filled answer is editable in place in the dialog; a change is an answer, `!` in the footer (contract §7.8 `filled`). It was (a), read-only, provisional. Decision 38.
 
 SYNTHESIS §2.4 has a "Pre-filled (n)" strip whose values can be changed (recorded as `!` in the footer). Built read-only: the fold lists what the sources answered and the defaults.
 
-- **(a) Read-only** — *provisional default.*
-- (b) Each pre-filled answer editable in place; a change becomes an answer, `!` in the footer.
+- (a) Read-only.
+- **(b)** Each pre-filled answer editable in place; a change becomes an answer, `!` in the footer.
 
 **Recommendation: (b) later**, once the weekly loop reads overrides.
 
-### P14. The rail's icons and their place
+### P14. The rail's icons and their place — decided: (a)
 
-- **(a) 🧠 Memory, ✨ Promptu, 📚, 💡, at the bottom of the rail beside the input** — *provisional default.*
+**Decided by the owner, 2026-10-30: (a).** Built as such. Decision 40.
+
+- **(a)** 🧠 Memory, ✨ Promptu, 📚, 💡, at the bottom of the rail beside the input.
 - (b) At the top, as VS Code's activity bar has them.
 - (c) Codicons instead of emoji.
 
@@ -312,4 +338,24 @@ SYNTHESIS §2.4 has a "Pre-filled (n)" strip whose values can be changed (record
 - The desk's Start work answer carries `starter` only beside `claude_uri`.
 - Quick mode applies to the handoff card's dialog too.
 - "Accept all recommendations" keeps what the page on screen holds, changed answers included.
+
+### P16. Where the Usage icon sits in the rail
+
+The owner asked for a Usage icon in the rail and did not say where. Built at the top of the rail's stack, above Memory, as it is about the account rather than the draft.
+
+- **(a) Top of the stack: 📊 Usage, 🧠 Memory, ✨ Promptu, 📚, 💡** — *provisional default.*
+- (b) Bottom, under the 💡.
+- (c) Apart from the others, at the rail's top edge, as VS Code keeps its account icon away from the views.
+
+**Recommendation: (a).**
+
+### P17. A usage reading before any chat of the window has had a reply
+
+The Usage icon reads the one source the chat has, the `rate_limit_event` a chat's CLI sends with a turn (what decision 67's banner read). It carries both windows and their resets, as `unifiedWindows` — an `@internal` field of Claude Code 2.1.287 [measured from its bundle]; without it the icon falls back to the one limit the event names. But nothing comes before a chat of this window has had a reply, so a fresh window shows "no reading yet".
+
+- **(a) No reading until then** — *provisional default.* Nothing invented, nothing stored.
+- (b) Keep the last reading in the extension's own state across windows and reloads, shown with its age.
+- (c) Ask Claude Code for it directly, outside a chat (a separate call; no documented route found).
+
+**Recommendation: (b)**: a reading an hour old, marked as such, beats none for an account-wide number; it stores no more than the decision-82 kind of state the card's switches use.
 
