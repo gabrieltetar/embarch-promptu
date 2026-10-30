@@ -67,6 +67,9 @@ enum Cmd {
         /// The EmbArch parts this session has: desk, embarch-api (comma-separated; `none`).
         #[arg(long, value_delimiter = ',')]
         have: Vec<String>,
+        /// A desk Start work run: never a `signals.desk: never` pattern; the `default` one when there is no pick.
+        #[arg(long)]
+        start: bool,
     },
     /// Record a page of answers (JSON on stdin) and print the pages left (§7.5).
     Next {
@@ -133,7 +136,7 @@ fn main() {
             std::panic::catch_unwind(|| match cmd {
                 Cmd::Memory { action: Some(MemoryAction::Check { paths, json }), .. } => check(&paths, json),
                 Cmd::Memory { action: None, json, no_used } => show_inventory(json, !no_used),
-                Cmd::Prep { pattern, rec, desk, offline, have } => run_prep(prep::PrepArgs { pattern, rec, desk, offline, have }),
+                Cmd::Prep { pattern, rec, desk, offline, have, start } => run_prep(prep::PrepArgs { pattern, rec, desk, offline, have, start }),
                 Cmd::Next { run } => run_next(&run),
                 Cmd::Render { run, rest, text } => run_render(&run, rest, text),
                 Cmd::Lint { paths, json, show, have } => run_lint(&paths, json, show, have),

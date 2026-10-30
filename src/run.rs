@@ -169,6 +169,14 @@ pub struct Run {
     /// ones are still asked.
     #[serde(default)]
     pub rest_optional: bool,
+    /// A desk Start work run (`prep --start`): no `signals.desk: never`
+    /// pattern is picked or offered.
+    #[serde(default)]
+    pub start: bool,
+    /// The set's `signals.desk: default` pattern replaced the pick (none,
+    /// unknown, a `never` one, or an offline run) under `start`.
+    #[serde(default)]
+    pub start_default: bool,
 }
 
 impl Run {
@@ -699,7 +707,8 @@ pub fn chip_names(run: &Run, set: &Set) -> Vec<String> {
     ranked.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
     let mut names: Vec<String> = vec![];
     for n in rec.iter().chain(run.alt.iter()).chain(ranked.iter().map(|(n, _)| *n)) {
-        if set.get(n).is_some() && !names.contains(n) {
+        // Under Start work a `never` pattern is no option (contract §7.8 `--start`).
+        if set.get(n).is_some_and(|p| !(run.start && p.front.signals.desk.as_deref() == Some("never"))) && !names.contains(n) {
             names.push(n.clone());
         }
     }
@@ -1226,6 +1235,8 @@ pub fn example_run(set: &Set, p: &Pattern, i: usize, today: &str, parts: &[Strin
         parts: parts.to_vec(),
         ask_first: p.front.ask_first.clone(),
         rest_optional: false,
+        start: false,
+        start_default: false,
     };
     for (k, v) in &ex.answers {
         let k = k.as_str().ok_or("an answer key is not a string")?;

@@ -197,6 +197,8 @@ pub struct PrepArgs {
     pub offline: bool,
     /// The EmbArch parts the session has (`--have desk,embarch-api`).
     pub have: Vec<String>,
+    /// A desk Start work run: the `signals.desk` rules apply (contract §7.8).
+    pub start: bool,
 }
 
 fn call_for(table: &toml::Table) -> Result<Call, String> {
@@ -256,6 +258,8 @@ pub fn prep(prompt: &str, args: PrepArgs) -> Result<Value, Fail> {
         parts: config::parts(&table, &args.have),
         ask_first: vec![],
         rest_optional: false,
+        start: args.start,
+        start_default: false,
     };
     // `item`: the desk is here and this run has a work item from it.
     if run.parts.iter().any(|p| p == "desk") && run.ctx.item.is_some() {
@@ -284,6 +288,19 @@ pub fn prep(prompt: &str, args: PrepArgs) -> Result<Value, Fail> {
                         v["relevant"] = json!({});
                     }
                     v["pattern"] = json!(forced);
+                }
+                // Start work (contract §7.8): no pick, an unknown one or a
+                // `never` one takes the desk's default, its fills cleared as
+                // a forced pick's are.
+                if args.start && args.pattern.is_none() && !v["pattern"].as_str().is_some_and(|p| set.startable(p)) {
+                    if let Some(d) = set.desk_default() {
+                        v["filled"] = json!({});
+                        v["candidates"] = json!({});
+                        v["relevant"] = json!({});
+                        v["pattern"] = json!(d);
+                        v["confidence"] = Value::Null;
+                        run.start_default = true;
+                    }
                 }
                 let gd = pass::guard(&v, &set, &g.src, &run.parts);
                 run.model_pick = gd.pattern.clone();
@@ -317,11 +334,21 @@ pub fn prep(prompt: &str, args: PrepArgs) -> Result<Value, Fail> {
                     }
                     None => {
                         run.pattern = pass::regex_top(&scores);
+                        // Start work's default rather than a keyword guess.
+                        if args.start {
+                            if let Some(d) = set.desk_default() {
+                                run.start_default = true;
+                                run.pattern = Some(d.to_string());
+                            }
+                        }
                         run.model_pick = run.pattern.clone();
                         run.picked_by = "regex".into();
                     }
                 }
             }
+        }
+        if run.start {
+            run.alt.retain(|a| set.startable(a));
         }
         // The chip row: a weak pick, no pick, or an offline guess.
         // With no pattern to offer it, the run goes on with none: an AskUserQuestion
@@ -392,8 +419,9 @@ pub fn describe(run: &Run, set: &Set) -> Value {
         "run": run.run,
         "pattern": p.map(|p| json!({
             "id": p.name(), "version": p.front.version, "picked_by": run.picked_by,
-            "confidence": run.confidence, "alt": run.alt,
+            "confidence": run.confidence, "alt": run.alt, "start_default": run.start_default,
         })),
+        "start": run.start,
         "offline": run.offline,
         "offline_reason": run.offline_reason,
         "mode": if run.brief { "brief" } else { "normal" },

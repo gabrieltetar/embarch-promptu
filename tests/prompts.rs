@@ -823,3 +823,49 @@ fn every_example_renders_as_its_golden_file() {
     assert_eq!(seen, 15);
     assert_eq!(std::fs::read_dir(&golden).unwrap().count(), 15, "a golden file with no example");
 }
+
+#[test]
+fn start_work_takes_the_desk_default_over_a_never_pattern() {
+    let s = Scratch::new("start");
+    let repo = s.repo("app", "abc-12-watchdog");
+    let never = ["draft-message", "handoff", "colleague-relay", "delegate-agents"];
+    let chip_labels = |out: &Value| -> Vec<String> {
+        out["choose"]["questions"][0]["options"].as_array().unwrap().iter().map(|o| o["label"].as_str().unwrap().to_string()).collect()
+    };
+    // The model picks a `never` pattern, confidently, with a fill: Start work
+    // takes implement-issue, the fill goes, and the chip row asks once.
+    s.reply(json!({"pattern": "draft-message", "confidence": 0.9, "alt": ["handoff", "debug-failure"], "flags": {},
+        "filled": {"channel": {"value": "Slack", "source": "prompt", "evidence": "Work on ABC-12 — Slack the vendor"}}, "candidates": {}, "relevant": {}}));
+    let out = s.json(&repo, &["prep", "--start"], "Work on ABC-12 — Slack the vendor about the watchdog");
+    assert_askable(&out);
+    assert_eq!(out["start"], true);
+    assert_eq!(out["pattern"]["id"], "implement-issue");
+    assert_eq!(out["pattern"]["start_default"], true);
+    assert_eq!(out["pattern"]["picked_by"], "model");
+    assert!(out["filled"].as_array().unwrap().is_empty(), "{out:#}");
+    assert_eq!(out["pattern"]["alt"], json!(["debug-failure"]));
+    let labels = chip_labels(&out);
+    assert_eq!(labels[0], "implement-issue (Recommended)");
+    assert!(labels.iter().all(|l| !never.iter().any(|n| l.starts_with(n))), "{labels:?}");
+
+    // A `possible` pick stands, with its fills and no chip row.
+    s.reply(json!({"pattern": "debug-failure", "confidence": 0.85, "alt": ["handoff", "review-loop"], "flags": {}, "filled": {}, "candidates": {}, "relevant": {}}));
+    let out = s.json(&repo, &["prep", "--start"], "Work on ABC-13 — the watchdog resets the board");
+    assert_eq!((out["pattern"]["id"].as_str(), out["pattern"]["start_default"].as_bool()), (Some("debug-failure"), Some(false)));
+    assert_eq!(out["pattern"]["alt"], json!(["review-loop"]));
+    assert!(out["choose"].is_null());
+
+    // Offline: the desk's default, never the keyword top.
+    let rough = "Work on ABC-14 — draft a Slack message to the team";
+    let plain = s.json(&repo, &["prep", "--offline"], rough);
+    assert_eq!((plain["pattern"]["id"].as_str(), plain["start"].as_bool()), (Some("draft-message"), Some(false)));
+    let out = s.json(&repo, &["prep", "--offline", "--start"], rough);
+    assert_eq!(out["pattern"]["id"], "implement-issue");
+    assert_eq!((out["pattern"]["picked_by"].as_str(), out["pattern"]["start_default"].as_bool()), (Some("regex"), Some(true)));
+    let labels = chip_labels(&out);
+    assert_eq!(labels[0], "implement-issue (Recommended)");
+    assert!(labels.iter().all(|l| !never.iter().any(|n| l.starts_with(n))), "{labels:?}");
+    // --pattern still wins, even a `never` one: the owner asked for it.
+    let out = s.json(&repo, &["prep", "--offline", "--start", "--pattern", "handoff"], rough);
+    assert_eq!((out["pattern"]["id"].as_str(), out["pattern"]["start_default"].as_bool()), (Some("handoff"), Some(false)));
+}

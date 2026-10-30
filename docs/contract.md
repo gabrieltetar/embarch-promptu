@@ -1,6 +1,6 @@
 # Promptu: the contract
 
-**Version 1, 2026-10-29.** The interfaces Promptu's five build steps share. Build step 1 (memory) owns §1–§5 and the memory id in §6.3; build step 2 (the terminal pass) owns §6's writer, §7 and §8; build step 3 (the chat and Start work) added `used` to §5 and `promptu patterns` (§7.9). All three are built and tested, and what §11 lists is fixed. §9–§10 are sketches: the step that builds each one fills it in and may add to it, but must not change anything §11 fixes.
+**Version 1, 2026-10-29.** The interfaces Promptu's five build steps share. Build step 1 (memory) owns §1–§5 and the memory id in §6.3; build step 2 (the terminal pass) owns §6's writer, §7 and §8; build step 3 (the chat and Start work) added `used` to §5, `prep --start` to §7.8 and `promptu patterns` (§7.9). All three are built and tested, and what §11 lists is fixed. §9–§10 are sketches: the step that builds each one fills it in and may add to it, but must not change anything §11 fixes.
 
 `[measured]` marks a fact checked against Claude Code 2.1.287 on 2026-10-29, either by running it or by reading its bundle; `[assumed]` marks one that was not. Every example is invented.
 
@@ -318,7 +318,7 @@ Fields appear in this order; one with nothing is left out. Example:
 | `version` | A whole number from 1, bumped by every approved change. The footer's version. |
 | `kind` | `task` or `fragment`. |
 | `signals.phrases`, `signals.not` | Case-insensitive regexes: +1 per phrase hit, −1 per `not` hit: the no-model pre-pick (§7.3's `regex_hint` and the offline fallback). |
-| `signals.desk` | `default` · `possible` · `never`: its role under desk Start work (step 3). |
+| `signals.desk` | `default` · `possible` · `never`: its role under desk Start work, `prep --start` (§7.8): the default pick, one the issue may call for, or never picked. |
 | `include` | `[{fragment, recommended?, when?}]`: the fragment's questions join this pattern's, with this pattern's recommendation and condition. |
 | `ask_first` | Question ids (its own or its fragments') asked before all others, in this order, when they are asked at all. `bench-session` asks its bench state first: board, what is plugged in, instruments, the gate (decision 31). |
 | `questions` | The quiz, below. |
@@ -441,7 +441,7 @@ Checks pattern files without a model. No path: the set this binary carries (or `
 | `size` (warning) | More than 12 questions: speed, not a cap. |
 | `signals` (warning) | An example's keyword pre-pick puts another pattern above its own. |
 
-### 7.8 `promptu prep [--have <parts|none>] [--pattern <id>|none] [--rec] [--desk <file>] [--offline]`
+### 7.8 `promptu prep [--have <parts|none>] [--pattern <id>|none] [--rec] [--desk <file>] [--offline] [--start]`
 
 The rough prompt on stdin. Gathers (no model), runs the pass (§7.3), guards it (§7.4), plans the questions, saves the run, prints:
 
@@ -467,7 +467,8 @@ The rough prompt on stdin. Gathers (no model), runs the pass (§7.3), guards it 
 }
 ```
 
-- **`pattern`**: null for no pattern. `picked_by` is `model`, `regex` (offline), `flag` (`--pattern`) or `owner` (switched on the chip row, §8.1).
+- **`pattern`**: null for no pattern. `picked_by` is `model`, `regex` (offline), `flag` (`--pattern`) or `owner` (switched on the chip row, §8.1). `start_default` (build step 3): true when desk Start work's default replaced the pick (`--start`, below).
+- **`--start`** (build step 3): the run is a desk Start work, the chat's or the skill's `--item` (`signals.desk`, §7.1). With no `--pattern`, a pick that is missing, `none`, unknown or a pattern whose `signals.desk` is `never` becomes the set's `signals.desk: default` pattern (the first in name order; `implement-issue` in the shipped set), its fills, candidates and relevance cleared as a forced pick's are, and its confidence null, so the chip row opens with that pattern recommended; offline, the default is taken instead of the keyword top (`picked_by` stays `regex`). Either way `pattern.start_default` is true. A `default` or `possible` pick stands as the model made it. Under `--start`, `alt` and the chip row never hold a `never` pattern; `--pattern` still wins, whatever its `signals.desk`. The output's top-level **`start`** is true for such a run, false otherwise.
 - **`--have`**: the EmbArch parts the session has, comma-separated (`desk`, `embarch-api`); `none` or absent: none. With the config they make `parts` (§7.6), plus `item` when the desk is there and `--desk` gave a work item; the output lists them and the run keeps them for `next` and `render`.
 - **`--desk <file>`**: the work item as JSON (`key`, `title`, `url`, `id`, `text`) or plain text. It is the `desk` source, sets `item` and the `item.*` tokens.
 - **`mode`**: `brief` when the prompt is a pasted, already-structured brief: the pass says so, or, without it, the prompt has at least 150 words and two structure markers (headings, label lines, the usual brief sections, a numbered list of three). Decision 24.
@@ -549,5 +550,5 @@ One week's ✓/✕ sheet under the local learning-data folder:
 
 - **Fixed:** §1.2's resolution, §2's labels, the hook's input handling, output shapes, exit codes and fail-open rules (§3), the check ids, the flag vocabulary's existing names, the footer grammar (§6.1) and the memory id (§6.3). From step 2: the pattern file's fields and their meaning (§7.1), the template's tokens and six sections (§7.2), the shapes of `prep`'s, `next`'s and `render`'s JSON (§7.8, §8), the answer forms `next` and `render` accept (§8.1), and the state paths (§7.5).
 - **May grow:** new checks with new ids, new flags, new fields in any JSON document, new footer fields placed after `pick` (readers ignore unknown fields), new lint checks, new config keys, new sources.
-- **From step 3, fixed:** `used` and `used_claude_md`'s item shape and what counts as a use (§5), and `promptu patterns`' JSON (§7.9).
+- **From step 3, fixed:** `used` and `used_claude_md`'s item shape and what counts as a use (§5), `promptu patterns`' JSON (§7.9), and `prep --start` with its output fields `start` and `pattern.start_default` (§7.8).
 - **Open until built:** §9–§10, within §0's rules.

@@ -279,6 +279,17 @@ impl Set {
         self.patterns.get(name)
     }
 
+    /// The pattern a desk Start work takes by default: the first, in name
+    /// order, whose `signals.desk` is `default`.
+    pub fn desk_default(&self) -> Option<&str> {
+        self.patterns.values().find(|p| p.front.signals.desk.as_deref() == Some("default")).map(|p| p.name())
+    }
+
+    /// Whether a pattern may be picked under desk Start work.
+    pub fn startable(&self, name: &str) -> bool {
+        self.get(name).is_some_and(|p| p.front.signals.desk.as_deref() != Some("never"))
+    }
+
     /// The partials a template may name: each fragment's body.
     pub fn partials(&self) -> BTreeMap<String, String> {
         self.fragments.iter().map(|(k, v)| (k.clone(), v.body.clone())).collect()
