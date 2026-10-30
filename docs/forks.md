@@ -173,7 +173,7 @@ They used to be asked costliest gap first, then in pattern order, so `bench-sess
 
 ## Step 3: the chat, desk Start work, the Memory menu (2026-10-30)
 
-**Decided by the owner on 2026-10-30:** P1–P11, P13 and P14, each marked below and recorded as a numbered decision in `embarch-doc/embarch-promptu/decisions.md` (33 amended, 34–40). **P12 and P15 stay open** on their provisional defaults, and **P16–P17**, met building the Usage icon the owner added the same day (embarch-chat decision 99), are open. Built in `embarch-promptu` (decisions 32–33), `embarch-chat` (its decisions 94–99, 11 reversed) and `embarch-desk` (its decision 67). Ranked by consequence.
+**Decided by the owner on 2026-10-30:** P1–P11, P13 and P14, each marked below and recorded as a numbered decision in `embarch-doc/embarch-promptu/decisions.md` (33 amended, 34–40), and **P16–P17**, met building the Usage icon the owner added the same day, recorded in `embarch-chat` decisions 94 and 99. **P12 and P15 stay open** on their provisional defaults, and **P18–P19**, met fixing review round 2, are open. Built in `embarch-promptu` (decisions 32–33), `embarch-chat` (its decisions 94–99, 11 reversed) and `embarch-desk` (its decision 67). Ranked by consequence.
 
 ### P1. Start work with no Promptu prompt: send the desk's starter, or leave it in the draft — decided: (a)
 
@@ -339,23 +339,46 @@ SYNTHESIS §2.4 has a "Pre-filled (n)" strip whose values can be changed (record
 - Quick mode applies to the handoff card's dialog too.
 - "Accept all recommendations" keeps what the page on screen holds, changed answers included.
 
-### P16. Where the Usage icon sits in the rail
+### P16. Where the Usage icon sits in the rail — decided: (c)
+
+**Decided by the owner, 2026-10-30: the top, alone.** Built so: 📊 Usage at the rail's top edge, 🧠 ✨ 📚 💡 at the bottom by the input. It was (a), the top of the bottom stack, provisional. `embarch-chat` decision 94.
 
 The owner asked for a Usage icon in the rail and did not say where. Built at the top of the rail's stack, above Memory, as it is about the account rather than the draft.
 
-- **(a) Top of the stack: 📊 Usage, 🧠 Memory, ✨ Promptu, 📚, 💡** — *provisional default.*
+- (a) Top of the stack: 📊 Usage, 🧠 Memory, ✨ Promptu, 📚, 💡.
 - (b) Bottom, under the 💡.
-- (c) Apart from the others, at the rail's top edge, as VS Code keeps its account icon away from the views.
+- **(c)** Apart from the others, at the rail's top edge, as VS Code keeps its account icon away from the views.
 
 **Recommendation: (a).**
 
-### P17. A usage reading before any chat of the window has had a reply
+### P17. A usage reading before any chat of the window has had a reply — decided: (a)
+
+**Decided by the owner, 2026-10-30: (a), nothing until a reply.** No reading is kept across windows or reloads: the icon is grey with no number until the first fresh reading in the window, and a window's reading past its reset falls back to grey too (review F14). Nothing was stored, so no code changed for it. `embarch-chat` decision 99.
 
 The Usage icon reads the one source the chat has, the `rate_limit_event` a chat's CLI sends with a turn (what decision 67's banner read). It carries both windows and their resets, as `unifiedWindows` — an `@internal` field of Claude Code 2.1.287 [measured from its bundle]; without it the icon falls back to the one limit the event names. But nothing comes before a chat of this window has had a reply, so a fresh window shows "no reading yet".
 
-- **(a) No reading until then** — *provisional default.* Nothing invented, nothing stored.
+- **(a)** No reading until then. Nothing invented, nothing stored.
 - (b) Keep the last reading in the extension's own state across windows and reloads, shown with its age.
 - (c) Ask Claude Code for it directly, outside a chat (a separate call; no documented route found).
 
 **Recommendation: (b)**: a reading an hour old, marked as such, beats none for an account-wide number; it stores no more than the decision-82 kind of state the card's switches use.
 
+### P18. A run whose chat's process closes under it
+
+Review F11 bounded Promptu's hold on a chat's process: it holds only while the chat's page shows and the run's last step is under 10 minutes old, so an idle close can now meet a dialog still open (left on a hidden page, or left alone), and a crash always could. The run stops then (the owner's brief: "an active run is still aborted on close"); what the owner sees was left open. Built: (a).
+
+- **(a) One line under the input and the draft as typed; Start work's starter waits in the draft, unsent** — *provisional default.* "Promptu: the chat's process closed while its dialog was open", taken by the next page that shows the chat, as any failure is.
+- (b) Nothing: the dialog goes without a word, as round 1's fix had it.
+- (c) As P2: Start work's starter is sent. Sending starts the chat's process again unasked, the moment it closed.
+
+**Recommendation: (a)**: P2 sends the starter on a pass that fails while the owner is there; a close usually means he is not.
+
+### P19. A single-select pre-fill emptied in the dialog
+
+Review F13: a single-select pre-fill whose Other text is cleared, with no option picked, has no answer. It must never show as "changed by you" while sending nothing. Built: (a).
+
+- **(a) A hint on the row, nothing sent, the pre-fill standing; the page's buttons still work** — *provisional default.* "needs an answer: pick one or type it; empty, it stays as it was".
+- (b) The same hint, and Next/Done disabled until it has an answer (Accept all and Esc still end the page).
+- (c) Snap it back to the source's own as it empties. Fights the owner while he retypes.
+
+**Recommendation: (a)**: the pre-fill was already an answer, so keeping it is no guess, and the page is never blocked on a field he only touched.
