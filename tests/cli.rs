@@ -449,6 +449,12 @@ fn memory_check_reports_and_gates() {
     assert!(get("clamp-trap.md").is_empty());
     assert_eq!(r["errors"], 4);
 
+    // The index named on its own: no O1, which is a check on a folder.
+    let idx = s.memdir(&repo).join("MEMORY.md");
+    let o = s.cmd(&repo).args(["memory", "check", "--json"]).arg(&idx).output().unwrap();
+    let r: Value = serde_json::from_slice(&o.stdout).unwrap();
+    let checks: Vec<&str> = r["files"][0]["findings"].as_array().unwrap().iter().map(|x| x["check"].as_str().unwrap()).collect();
+    assert_eq!(checks, ["I1", "I2", "I5"]);
     // A clean file alone passes; a missing path is a usage error.
     let clean = s.memdir(&repo).join("lint-script.md");
     assert_eq!(s.cmd(&repo).args(["memory", "check"]).arg(&clean).output().unwrap().status.code(), Some(0));

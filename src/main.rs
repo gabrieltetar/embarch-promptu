@@ -117,11 +117,14 @@ fn files_in(dir: &Path) -> Vec<PathBuf> {
 
 fn check(paths: &[PathBuf], json: bool) -> i32 {
     let today = config::today();
-    let mut targets = vec![];
+    // Each file, and whether it came from a folder: O1 is a check on a
+    // folder, so an index named on its own gets I1, I2, I4 and I5 only
+    // (contract §4).
+    let mut targets: Vec<(PathBuf, bool)> = vec![];
     if paths.is_empty() {
         let here = cwd();
         match claude::auto_memory_dir(&here) {
-            Some((dir, _)) if dir.is_dir() => targets.extend(files_in(&dir)),
+            Some((dir, _)) if dir.is_dir() => targets.extend(files_in(&dir).into_iter().map(|f| (f, true))),
             Some((dir, _)) => {
                 eprintln!("no auto-memory folder yet for {}: {}", claude::project_root(&here).display(), dir.display());
                 return 0;
@@ -134,9 +137,9 @@ fn check(paths: &[PathBuf], json: bool) -> i32 {
     }
     for p in paths {
         if p.is_dir() {
-            targets.extend(files_in(p));
+            targets.extend(files_in(p).into_iter().map(|f| (f, true)));
         } else if p.is_file() {
-            targets.push(p.clone());
+            targets.push((p.clone(), false));
         } else {
             eprintln!("{}: no such file or folder", p.display());
             return 2;
@@ -144,7 +147,7 @@ fn check(paths: &[PathBuf], json: bool) -> i32 {
     }
 
     let mut files = vec![];
-    for t in &targets {
+    for (t, from_folder) in &targets {
         let Ok(text) = std::fs::read_to_string(t) else {
             eprintln!("{}: cannot be read as text", t.display());
             return 2;
@@ -152,7 +155,7 @@ fn check(paths: &[PathBuf], json: bool) -> i32 {
         let dir = t.parent().unwrap_or(Path::new("."));
         let is_index = t.file_name().is_some_and(|n| n == "MEMORY.md");
         let mut findings = if is_index { checks::index(Before::Unknown, &text, Some(dir)) } else { checks::topic(Before::Unknown, &text, today) };
-        if is_index {
+        if is_index && *from_folder {
             for orphan in checks::orphans(dir, &text) {
                 findings.push(Finding { check: "O1", severity: Severity::Warning, line: None, message: format!("{orphan} is not linked from the index: delete it or give it an index line") });
             }
