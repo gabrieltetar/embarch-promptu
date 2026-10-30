@@ -239,7 +239,7 @@ fn when_holds(run: &Run, qs: &[Question], q: &Question, resolved: &BTreeMap<Stri
 
 // ---------------------------------------------------------------- values
 
-fn fill_answer(q: &Question, f: &Fill, parts: &[String]) -> Answer {
+pub fn fill_answer(q: &Question, f: &Fill, parts: &[String]) -> Answer {
     let opts = q.effective_options();
     // Only options that show: a fill can never land on a hidden one.
     let visible = q.visible_labels(parts);

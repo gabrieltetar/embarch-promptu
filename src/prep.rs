@@ -404,10 +404,13 @@ pub fn describe(run: &Run, set: &Set) -> Value {
             let mut v = json!({ "q": id, "header": header(id), "value": f.value, "source": f.source, "entry": f.entry, "evidence": f.evidence });
             if let Some((q, run::Status::Filled { answer, changed })) = status.iter().find(|(q, _)| &q.id == id) {
                 let (ask, picked, other) = run::filled_view(q, run, answer);
+                // What the source gave, in the same labels: picking it again undoes a change.
+                let (_, o_picked, o_other) = run::filled_view(q, run, &run::fill_answer(q, f, &run.parts));
                 v["ask"] = json!(ask);
                 v["picked"] = json!(picked);
                 v["other"] = json!(other);
                 v["changed"] = json!(changed);
+                v["original"] = json!({ "picked": o_picked, "other": o_other });
             }
             v
         })

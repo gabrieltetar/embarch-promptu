@@ -185,6 +185,40 @@ fn a_fill_carries_its_question_and_can_be_changed_in_place() {
 }
 
 #[test]
+fn a_fill_changed_back_is_no_change_and_an_emptied_multi_is_an_answer() {
+    // Review F13/F14: picking the fill's own value again undoes the change; emptying a multi is a real answer.
+    let s = Scratch::new("fill-revert");
+    let repo = s.repo("motor-fw", "main");
+    let ask = "implement the watchdog; use another checkout and only I open PRs";
+    s.reply(json!({"pattern": "implement-issue", "confidence": 0.9, "alt": [], "flags": {},
+        "filled": {"rules": {"value": ["Use another checkout", "Only I open PRs"], "source": "prompt", "evidence": "use another checkout and only I open PRs"}},
+        "candidates": {}, "relevant": {"rules": true}, "ambiguous": []}));
+    let out = s.json(&repo, &["prep", "--have", "none"], ask);
+    let fill = |out: &Value| out["filled"].as_array().unwrap().iter().find(|f| f["q"] == "rules").cloned().unwrap();
+    let f = fill(&out);
+    assert_eq!(f["ask"]["multiSelect"], true);
+    assert_eq!(f["original"]["picked"], f["picked"], "unchanged: what it holds is what the source gave");
+    let original: Vec<String> = f["original"]["picked"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect();
+    assert_eq!(original.len(), 2);
+    let run = out["run"].as_str().unwrap();
+    // Changed, then changed back to the original labels: no longer a change.
+    let n = s.json(&repo, &["next", run], &json!({"answers": {"rules": ["Use another checkout"]}}).to_string());
+    assert_eq!(fill(&n)["changed"], true);
+    let n = s.json(&repo, &["next", run], &json!({"answers": {"rules": original}}).to_string());
+    assert_eq!(fill(&n)["changed"], false);
+    let r = s.json(&repo, &["render", run, "--rest", "recommended"], "{}");
+    assert!(r["footer"].as_str().unwrap().contains("rules:prompt") && !r["footer"].as_str().unwrap().contains("rules:prompt!"), "{}", r["footer"]);
+    let kept = r["prompt"].as_str().unwrap().to_string();
+    // Emptied: an answer of its own, nothing taken, marked `!`.
+    let n = s.json(&repo, &["next", run], &json!({"answers": {"rules": []}}).to_string());
+    assert_eq!((fill(&n)["changed"].clone(), fill(&n)["picked"].clone()), (json!(true), json!([])));
+    let r = s.json(&repo, &["render", run, "--rest", "recommended"], "{}");
+    assert!(r["footer"].as_str().unwrap().contains("rules:prompt!"), "{}", r["footer"]);
+    let emptied = r["prompt"].as_str().unwrap();
+    assert_eq!(kept.lines().filter(|l| l.starts_with("- ")).count(), emptied.lines().filter(|l| l.starts_with("- ")).count() + 2, "the two house rules are gone:\n{kept}\n---\n{emptied}");
+}
+
+#[test]
 fn a_bench_run_from_prep_to_render() {
     let s = Scratch::new("bench");
     let repo = s.repo("motor-fw", "feat/reworks");
