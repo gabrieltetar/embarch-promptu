@@ -30,8 +30,11 @@ pub struct Inventory {
     pub scopes: Vec<Scope>,
     pub entries: Vec<Entry>,
     pub counts: Counts,
-    /// Whether `used` was filled from footers. Always false before step 2.
+    /// Whether `used` was filled from the transcripts' footers (false with `--no-used`).
     pub used_scanned: bool,
+    /// `memory.claude-md` fills: the global `CLAUDE.md` as a file, never one
+    /// of its sections (contract §6.3), newest first.
+    pub used_claude_md: Vec<crate::used::Use>,
 }
 
 #[derive(Debug, Serialize)]
@@ -77,8 +80,8 @@ pub struct Entry {
     pub source: Vec<String>,
     pub flags: Vec<&'static str>,
     pub stale: bool,
-    /// Footers naming this entry, newest first. Empty until step 2.
-    pub used: Vec<serde_json::Value>,
+    /// Footers of the last 30 days naming this entry, newest first.
+    pub used: Vec<crate::used::Use>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -94,7 +97,8 @@ fn show(p: &Path) -> String {
     p.display().to_string()
 }
 
-pub fn build(cwd: &Path, today: NaiveDate) -> Inventory {
+/// `scan_used`: read the transcripts for "where it's used" (`--no-used` skips it).
+pub fn build(cwd: &Path, today: NaiveDate, scan_used: bool) -> Inventory {
     let root = claude::project_root(cwd);
     let mem = claude::auto_memory_dir(cwd);
     let mem_path = mem.as_ref().map(|(p, _)| p.clone());
@@ -118,6 +122,17 @@ pub fn build(cwd: &Path, today: NaiveDate) -> Inventory {
 
     let project_files = project_files(cwd);
     scopes.push(claude_md_scope("project", "Project", &project_files, &mut entries));
+
+    let mut used_claude_md = vec![];
+    if scan_used {
+        let mut uses = crate::used::scan(&root, today);
+        for e in entries.iter_mut().filter(|e| e.scope == "auto") {
+            if let Some(u) = uses.by_id.get(&e.id) {
+                e.used = u.clone();
+            }
+        }
+        used_claude_md = std::mem::take(&mut uses.claude_md);
+    }
 
     let mut counts = Counts { entries: entries.len(), ..Default::default() };
     for e in &entries {
@@ -147,7 +162,8 @@ pub fn build(cwd: &Path, today: NaiveDate) -> Inventory {
         scopes,
         entries,
         counts,
-        used_scanned: false,
+        used_scanned: scan_used,
+        used_claude_md,
     }
 }
 
@@ -465,17 +481,22 @@ pub fn render(inv: &Inventory) -> String {
                     last = Some(e.domain.clone());
                 }
                 let age = e.age_days.map(|d| format!("{d}d")).unwrap_or_else(|| "-".into());
+                let mut tail: Vec<String> = e.flags.iter().map(|f| f.to_string()).collect();
+                if !e.used.is_empty() {
+                    tail.push(format!("used {}×", e.used.len()));
+                }
                 out.push(format!(
                     "    {:<10} {}  {:<56} {:>5}  {}",
                     e.kind.as_deref().unwrap_or("-"),
                     e.id,
                     clip(&e.title, 56),
                     age,
-                    e.flags.join(" ")
-                ));
+                    tail.join(" ")
+                ).trim_end().to_string());
             }
         } else {
-            out.push(format!("{} · {} file{}", scope.label, scope.files.len(), if scope.files.len() == 1 { "" } else { "s" }));
+            let used = if scope.id == "user" && !inv.used_claude_md.is_empty() { format!(" · CLAUDE.md used {}×", inv.used_claude_md.len()) } else { String::new() };
+            out.push(format!("{} · {} file{}{used}", scope.label, scope.files.len(), if scope.files.len() == 1 { "" } else { "s" }));
             for f in &scope.files {
                 let doms: Vec<&str> = es.iter().filter(|e| &e.file == f).filter_map(|e| e.domain.as_deref()).collect();
                 out.push(format!("  {}: {}", tilde(f), if doms.is_empty() { "-".into() } else { doms.join(" · ") }));

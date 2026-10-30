@@ -731,7 +731,7 @@ pub fn choose_question(run: &Run, set: &Set) -> AskQuestion {
     AskQuestion { question: "Which kind of task is this?".into(), header: "Pattern".into(), multi_select: false, options }
 }
 
-fn first_sentence(s: &str) -> String {
+pub fn first_sentence(s: &str) -> String {
     let s = s.split_whitespace().collect::<Vec<_>>().join(" ");
     let end = s.find(". ").map(|i| i + 1).unwrap_or(s.len());
     cut(&s[..end], 120)

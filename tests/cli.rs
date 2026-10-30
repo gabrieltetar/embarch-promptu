@@ -487,3 +487,94 @@ fn memory_check_reports_and_gates() {
     assert_eq!(s.cmd(&repo).args(["memory", "check"]).arg(&clean).output().unwrap().status.code(), Some(0));
     assert_eq!(s.cmd(&repo).args(["memory", "check", "/no/such/place"]).output().unwrap().status.code(), Some(2));
 }
+
+/// One transcript line, as Claude Code writes it.
+fn record(kind: &str, cwd: &Path, ts: &str, content: Value, extra: Value) -> String {
+    let mut r = json!({"type": kind, "cwd": cwd.to_string_lossy(), "timestamp": ts, "message": {"role": kind, "content": content}});
+    for (k, v) in extra.as_object().unwrap() {
+        r[k] = v.clone();
+    }
+    r.to_string()
+}
+
+#[test]
+fn where_it_is_used_comes_from_this_projects_footers_of_the_last_30_days() {
+    let s = Scratch::new("used");
+    let repo = s.repo("app");
+    let other = s.repo("other");
+    s.seed(&repo);
+    // The ids, from the inventory itself; nothing scanned with --no-used.
+    let o = s.cmd(&repo).args(["memory", "--json", "--no-used"]).output().unwrap();
+    let inv: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!(inv["used_scanned"], false);
+    assert_eq!(inv["used_claude_md"], json!([]));
+    let clamp = entry(&inv, "clamp-trap.md")["id"].as_str().unwrap().to_string();
+    let soak = entry(&inv, "soak-test.md")["id"].as_str().unwrap().to_string();
+
+    let sent = |n: &str, fill: &str| format!("## Goal\nrough words\n\n— promptu bench-session@{n} asked=board:other filled={fill}");
+    let rendered = format!("{{\n  \"footer\": \"— promptu debug-failure@1 filled=first:memory.{clamp}!\",\n  \"prompt\": \"x\"\n}}");
+    let lines = [
+        // Sent from the chat: two fills, one of them the global CLAUDE.md.
+        record("user", &repo.join("src"), "2026-10-20T10:00:00Z", json!(sent("1", &format!("flash:memory.{clamp},gate:memory.claude-md"))), json!({})),
+        // The same footer again in this transcript: counted once.
+        record("user", &repo, "2026-10-21T10:00:00Z", json!(sent("1", &format!("flash:memory.{clamp},gate:memory.claude-md"))), json!({})),
+        // The terminal skill's route: render's JSON as a tool result.
+        record("user", &repo, "2026-10-25T09:00:00Z", json!([{"type": "tool_result", "tool_use_id": "t1", "content": rendered}]), json!({})),
+        // Too old, a meta line, a sidechain, another project, Claude's own text: none count.
+        record("user", &repo, "2026-09-20T10:00:00Z", json!(sent("2", &format!("flash:memory.{soak}"))), json!({})),
+        record("user", &repo, "2026-10-22T10:00:00Z", json!(sent("3", &format!("flash:memory.{soak}"))), json!({"isMeta": true})),
+        record("user", &repo, "2026-10-22T10:00:00Z", json!(sent("4", &format!("flash:memory.{soak}"))), json!({"isSidechain": true})),
+        record("user", &other, "2026-10-22T10:00:00Z", json!(sent("5", &format!("flash:memory.{soak}"))), json!({})),
+        record("assistant", &repo, "2026-10-22T10:00:00Z", json!([{"type": "text", "text": sent("6", &format!("flash:memory.{soak}"))}]), json!({})),
+        "not json — promptu x".to_string(),
+    ];
+    let tdir = s.claude().join("projects/-x-app");
+    std::fs::create_dir_all(tdir.join("s1/subagents")).unwrap();
+    std::fs::write(tdir.join("s1.jsonl"), lines.join("\n") + "\n").unwrap();
+    // A subagent's own transcript, and a file untouched for two months: not read.
+    std::fs::write(tdir.join("s1/subagents/a.jsonl"), record("user", &repo, "2026-10-22T10:00:00Z", json!(sent("7", &format!("flash:memory.{soak}"))), json!({})) + "\n").unwrap();
+    let old = tdir.join("s0.jsonl");
+    std::fs::write(&old, record("user", &repo, "2026-10-22T10:00:00Z", json!(sent("8", &format!("flash:memory.{soak}"))), json!({})) + "\n").unwrap();
+    let f = std::fs::File::options().write(true).open(&old).unwrap();
+    f.set_modified(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_756_684_800)).unwrap(); // 2025-09-01
+
+    let inv = inventory(&s, &repo);
+    assert_eq!(inv["used_scanned"], true);
+    assert_eq!(
+        entry(&inv, "clamp-trap.md")["used"],
+        json!([
+            {"pattern": "debug-failure", "question": "first", "date": "2026-10-25", "changed": true},
+            {"pattern": "bench-session", "question": "flash", "date": "2026-10-20", "changed": false},
+        ])
+    );
+    assert_eq!(entry(&inv, "soak-test.md")["used"], json!([]));
+    assert_eq!(inv["used_claude_md"], json!([{"pattern": "bench-session", "question": "gate", "date": "2026-10-20", "changed": false}]));
+    // The text view counts them.
+    let text = stdout(&s.cmd(&repo).arg("memory").output().unwrap());
+    assert!(text.contains("used 2×") && text.contains("CLAUDE.md used 1×"), "{text}");
+}
+
+#[test]
+fn patterns_lists_the_task_patterns_for_a_picker() {
+    let s = Scratch::new("patterns");
+    let o = s.cmd(&s.root).args(["patterns", "--json", "--have", "desk"]).output().unwrap();
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    let v: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!(v["promptu"], 1);
+    let list = v["patterns"].as_array().unwrap();
+    let names: Vec<&str> = list.iter().map(|p| p["name"].as_str().unwrap()).collect();
+    let mut sorted = names.clone();
+    sorted.sort();
+    assert_eq!(names, sorted);
+    assert_eq!(names.len(), 11);
+    assert!(!names.iter().any(|n| n.starts_with('_') || *n == "house-rules" || *n == "bench-state"));
+    let ii = list.iter().find(|p| p["name"] == "implement-issue").unwrap();
+    assert_eq!((ii["version"].as_u64(), ii["desk"].as_str()), (Some(1), Some("default")));
+    assert!(ii["summary"].as_str().unwrap().starts_with("Build a feature") && ii["description"].as_str().unwrap().len() > ii["summary"].as_str().unwrap().len());
+    let text = stdout(&s.cmd(&s.root).arg("patterns").output().unwrap());
+    assert_eq!(text.lines().count(), 11);
+    assert!(text.lines().any(|l| l.starts_with("handoff@1  Have this session")), "{text}");
+    // A set that does not load is a usage error.
+    let o = s.cmd(&s.root).arg("patterns").env("PROMPTU_PATTERNS", "/no/such/folder").output().unwrap();
+    assert_eq!(o.status.code(), Some(2));
+}

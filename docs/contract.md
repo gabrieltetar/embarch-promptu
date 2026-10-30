@@ -1,6 +1,6 @@
 # Promptu: the contract
 
-**Version 1, 2026-10-29.** The interfaces Promptu's five build steps share. Build step 1 (memory) owns §1–§5 and the memory id in §6.3; build step 2 (the terminal pass) owns §6's writer, §7 and §8. Both are built and tested, and what §11 lists is fixed. §9–§10 are sketches: the step that builds each one fills it in and may add to it, but must not change anything §11 fixes.
+**Version 1, 2026-10-29.** The interfaces Promptu's five build steps share. Build step 1 (memory) owns §1–§5 and the memory id in §6.3; build step 2 (the terminal pass) owns §6's writer, §7 and §8; build step 3 (the chat and Start work) added `used` to §5 and `promptu patterns` (§7.9). All three are built and tested, and what §11 lists is fixed. §9–§10 are sketches: the step that builds each one fills it in and may add to it, but must not change anything §11 fixes.
 
 `[measured]` marks a fact checked against Claude Code 2.1.287 on 2026-10-29, either by running it or by reading its bundle; `[assumed]` marks one that was not. Every example is invented.
 
@@ -211,7 +211,7 @@ Exit 1 when any error is found, 0 when there are none (warnings included), 2 whe
 
 Every checked file is listed, clean ones with `findings: []`. `line` is omitted when a finding has none. The text form lists only files with findings, one line per finding, then a count line.
 
-## 5. `promptu memory [--json]`
+## 5. `promptu memory [--json] [--no-used]`
 
 The memory that loads in the current directory, for the memory menu (terminal now, the chat's rail from step 3). Read-only.
 
@@ -242,7 +242,8 @@ The memory that loads in the current directory, for the memory menu (terminal no
       "review_by": "2026-10-01", "source": [], "flags": ["review_by_past"], "stale": true, "used": [] }
   ],
   "counts": { "entries": 39, "stale": 5, "by_scope": {"auto": 32, "project": 7}, "by_kind": {"rule": 6, "trap": 12}, "by_flag": {"review_by_past": 1} },
-  "used_scanned": false
+  "used_scanned": true,
+  "used_claude_md": [ { "pattern": "bench-session", "question": "gate", "date": "2026-10-20", "changed": false } ]
 }
 ```
 
@@ -259,9 +260,10 @@ The memory that loads in the current directory, for the memory menu (terminal no
   | label missing | `bad_frontmatter`, `no_kind`, `no_review_by` (a status without one), `no_source` (a reference without one), `no_domain` (index line under no header), `unindexed` (no index line links it) |
   | index points nowhere | `dead_link`: an index line whose target does not exist in the folder (the entry's `file` is where it would be). A URL or `#anchor` target is not listed at all; a target that exists but is not a topic file, such as one in a subfolder, is listed with no `dead_link`. |
 
-- **`used`** lists the footers (§6) of the last 30 days naming the entry, newest first. Step 1 does not scan transcripts: `used` is always `[]` and `used_scanned` is `false`. The step that fills it sets `used_scanned: true` and gives each item at least `{ "pattern": "<id>", "question": "<qid>", "date": "YYYY-MM-DD" }`.
+- **`used`** lists the footers (§6) of the last 30 days that filled a question from the entry, newest first, one item per fill: `{ "pattern": "bench-session", "question": "flash", "date": "2026-10-20", "changed": false }`, `changed` being the footer's `!` (the owner changed the fill). Only auto entries carry uses; a `memory.claude-md` fill goes to the top-level **`used_claude_md`**, in the same shape, because it names the global `CLAUDE.md` as a file and not one of its sections (§6.3). **`used_scanned`** is `true` when the transcripts were read; `--no-used` skips them, leaving every `used` and `used_claude_md` empty and `used_scanned` `false`.
+- **Where a footer is found.** Claude Code's transcripts, `<config home>/projects/*/*.jsonl` (top-level files only: a subagent's own transcript is in a subfolder), each last modified within 30 days. A record counts when its `cwd`'s main checkout (§1.2) is this inventory's `project_root` (a `cwd` that no longer exists counts when it is the main checkout or under it, so a removed worktree's runs are lost), and it is not `isSidechain`. Two routes: **(a)** a `type: "user"` record that is not `isMeta` and has no `origin.kind` other than `human` — the owner's own message, as the chat sends a rendered prompt — with a line starting `— promptu ` in its content (a string, or its `text` blocks); **(b)** a `tool_result` block whose content holds `"footer": "— promptu …"`, `promptu render`'s JSON, the terminal skill's route, where the prompt is shown and not sent (a run cancelled at "send as is / edit" counts too). Claude's own text never counts. One footer line counts once per transcript. Its date is the record's `timestamp` as a local date, else the file's; one older than 30 days is left out. A footer that does not parse (§6.1) is skipped. Reading is a substring search for `— promptu ` and a JSON parse of only the lines that hold it: **0.21–0.24 s for 349 MB in 60 files** with the page cache warm [measured 2026-10-29, release build, WSL2, a synthetic set; a cold cache not measured]; `--no-used` under 10 ms.
 
-The text form (`promptu memory`) prints the same data: a header, then per scope its files and domains, and for auto memory one line per entry: kind, id, title, age, flags.
+The text form (`promptu memory`) prints the same data: a header, then per scope its files and domains, and for auto memory one line per entry: kind, id, title, age, flags, and `used N×` when it has uses; the User scope's line adds `CLAUDE.md used N×` for `used_claude_md`.
 
 ## 6. The footer
 
@@ -478,6 +480,18 @@ The rough prompt on stdin. Gathers (no model), runs the pass (§7.3), guards it 
 - **Options shown**: the recommended one(s) first, marked " (Recommended)"; for a `text` question, its prompt pre-selection, then the pass's candidates, then its static options, then a fallback while fewer than two; at most 4; labels cut to 80 characters. Claude Code adds "Other" itself.
 - **Exit**: 0 with JSON (offline and every warning included); 2 with a message on stderr for no prompt or an unknown `--pattern`; 3 on an internal error (§0). `next` exits 1 when it cannot save the run.
 
+### 7.9 `promptu patterns [--json] [--have <parts|none>]` (build step 3)
+
+The task patterns the set carries (§7.1: the binary's own, or `PROMPTU_PATTERNS`), in name order; fragments are never listed. What the chat's Promptu card offers when the owner forces a pattern for the next prompt. Read-only and model-free; `--have` is accepted as `prep` takes it, and hides nothing (a pattern has no `requires`).
+
+```json
+{ "promptu": 1,
+  "patterns": [ { "name": "implement-issue", "version": 1, "summary": "Build a feature or a change from an issue or an idea: a new driver, a setting, a fix with…",
+                  "description": "<the whole description, whitespace folded>", "desk": "default" } ] }
+```
+
+`summary` is the description's first sentence, cut at 120 characters with `…`; `desk` is the pattern's `signals.desk` or null. The text form prints one line per pattern, `<name>@<version>  <summary>`. Exit 0; 2 when the set cannot be loaded (a `PROMPTU_PATTERNS` folder that does not exist).
+
 ## 8. `promptu next` and `promptu render` (build step 2)
 
 ### 8.1 Input
@@ -535,4 +549,5 @@ One week's ✓/✕ sheet under the local learning-data folder:
 
 - **Fixed:** §1.2's resolution, §2's labels, the hook's input handling, output shapes, exit codes and fail-open rules (§3), the check ids, the flag vocabulary's existing names, the footer grammar (§6.1) and the memory id (§6.3). From step 2: the pattern file's fields and their meaning (§7.1), the template's tokens and six sections (§7.2), the shapes of `prep`'s, `next`'s and `render`'s JSON (§7.8, §8), the answer forms `next` and `render` accept (§8.1), and the state paths (§7.5).
 - **May grow:** new checks with new ids, new flags, new fields in any JSON document, new footer fields placed after `pick` (readers ignore unknown fields), new lint checks, new config keys, new sources.
+- **From step 3, fixed:** `used` and `used_claude_md`'s item shape and what counts as a use (§5), and `promptu patterns`' JSON (§7.9).
 - **Open until built:** §9–§10, within §0's rules.

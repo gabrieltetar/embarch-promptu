@@ -21,6 +21,7 @@ mod prep;
 mod run;
 mod sha1;
 mod state;
+mod used;
 
 use checks::{Before, Finding, Severity};
 use clap::{Parser, Subcommand};
@@ -43,6 +44,9 @@ enum Cmd {
         /// Print JSON (docs/contract.md §5).
         #[arg(long)]
         json: bool,
+        /// Skip reading the transcripts for "where it's used" (`used_scanned: false`).
+        #[arg(long)]
+        no_used: bool,
     },
     /// Check a memory write: Claude Code hook JSON on stdin (what the plugin runs).
     Hook,
@@ -79,6 +83,14 @@ enum Cmd {
         /// Print the prompt alone instead of JSON.
         #[arg(long)]
         text: bool,
+    },
+    /// The task patterns this binary carries, for a picker (§7.9).
+    Patterns {
+        #[arg(long)]
+        json: bool,
+        /// The EmbArch parts this session has (accepted as `prep` takes it; no pattern is hidden by one).
+        #[arg(long, value_delimiter = ',')]
+        have: Vec<String>,
     },
     /// Check pattern files: schema, AskUserQuestion's limits, slots, examples (§7.7).
     Lint {
@@ -120,11 +132,12 @@ fn main() {
             std::panic::set_hook(Box::new(|info| eprintln!("{}", internal_error_line(info))));
             std::panic::catch_unwind(|| match cmd {
                 Cmd::Memory { action: Some(MemoryAction::Check { paths, json }), .. } => check(&paths, json),
-                Cmd::Memory { action: None, json } => show_inventory(json),
+                Cmd::Memory { action: None, json, no_used } => show_inventory(json, !no_used),
                 Cmd::Prep { pattern, rec, desk, offline, have } => run_prep(prep::PrepArgs { pattern, rec, desk, offline, have }),
                 Cmd::Next { run } => run_next(&run),
                 Cmd::Render { run, rest, text } => run_render(&run, rest, text),
                 Cmd::Lint { paths, json, show, have } => run_lint(&paths, json, show, have),
+                Cmd::Patterns { json, have: _ } => run_patterns(json),
                 Cmd::Hook => 0,
             })
             .unwrap_or(INTERNAL_ERROR)
@@ -222,6 +235,40 @@ fn run_render(run: &str, rest: Option<String>, text: bool) -> i32 {
     finish(r, text)
 }
 
+/// The task patterns, name order: what the chat's Promptu card offers to
+/// force for the next prompt (contract §7.9). Fragments are never picked.
+fn run_patterns(json: bool) -> i32 {
+    debug_panic();
+    let set = match pattern::Set::load() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("promptu: {e}");
+            return 2;
+        }
+    };
+    let list: Vec<serde_json::Value> = set
+        .patterns
+        .values()
+        .map(|p| {
+            serde_json::json!({
+                "name": p.name(),
+                "version": p.front.version,
+                "summary": run::first_sentence(&p.front.description),
+                "description": p.front.description.split_whitespace().collect::<Vec<_>>().join(" "),
+                "desk": p.front.signals.desk,
+            })
+        })
+        .collect();
+    if json {
+        println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "promptu": 1, "patterns": list })).unwrap_or_default());
+    } else {
+        for p in &list {
+            println!("{}@{}  {}", p["name"].as_str().unwrap_or_default(), p["version"], p["summary"].as_str().unwrap_or_default());
+        }
+    }
+    0
+}
+
 fn run_lint(paths: &[PathBuf], json: bool, show: bool, have: Option<Vec<String>>) -> i32 {
     debug_panic();
     let set = if paths.is_empty() {
@@ -274,9 +321,9 @@ fn run_lint(paths: &[PathBuf], json: bool, show: bool, have: Option<Vec<String>>
     }
 }
 
-fn show_inventory(json: bool) -> i32 {
+fn show_inventory(json: bool, scan_used: bool) -> i32 {
     debug_panic();
-    let inv = inventory::build(&cwd(), config::today());
+    let inv = inventory::build(&cwd(), config::today(), scan_used);
     if json {
         println!("{}", serde_json::to_string_pretty(&inv).unwrap_or_default());
     } else {
