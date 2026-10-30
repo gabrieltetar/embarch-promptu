@@ -133,7 +133,7 @@ T1–T5 run on every write to a topic file, whatever it touches: a write brings 
 **Context** is one line of JSON on stdout, and nothing else:
 
 ```json
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"Promptu checked this write to the memory file lint-script.md (warn mode): it goes ahead, but fix these with your next edit to it:\n- T2: add `kind:` at the top level of the frontmatter: preference · rule · trap · reference · status"}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"Promptu checked this write to the memory file lint-script.md (warn mode): it goes ahead, but fix these with your next edit to it:\n- T2: add `kind:` to the frontmatter: preference · rule · trap · reference · status"}}
 ```
 
 - `hookEventName` is the input's event (`PreToolUse`, or `PostToolUse` for O1); Claude Code rejects a mismatch [measured].
@@ -145,7 +145,7 @@ T1–T5 run on every write to a topic file, whatever it touches: a write brings 
 
 ```
 Promptu refused this write to the memory file lint-script.md. Fix these and write it again:
-- T2: add `kind:` at the top level of the frontmatter: preference · rule · trap · reference · status
+- T2: add `kind:` to the frontmatter: preference · rule · trap · reference · status
 Also worth fixing (not blocking):
 - T5: a trap memory takes `source:` when there is one — a repo path, an absolute path, a URL or a commit
 ```

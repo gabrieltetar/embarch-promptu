@@ -1,38 +1,43 @@
 # Promptu: design forks for the owner
 
-Choices the approved design does not settle, met while building. **None is decided here.** Each runs on a provisional default, the most reversible one, until the owner picks; the default is marked. Ranked by consequence. Step 1 (memory), 2026-10-29.
+Choices the approved design does not settle, met while building. **No agent decides one.** An open fork runs on a provisional default, the most reversible one, until the owner picks; the default is marked. Ranked by consequence. Step 1 (memory), 2026-10-29.
 
-## Decide before block mode is turned on
+**Decided by the owner on 2026-10-29:** F1 (a), F2 (b), F3 (d) in `embarch-umbrella`, F4 (b); each is marked below and recorded as a numbered decision in `embarch-doc/embarch-promptu/decisions.md`. **F5–F10 are open.**
 
-### F1. T7 compares fields level-blind and skips Claude Code's own three
+## Decide before block mode is turned on (F1–F4 decided)
+
+### F1. T7 compares fields level-blind and skips Claude Code's own three — decided
+
+**Decided by the owner, 2026-10-29: (a).** Built as such since step 1.
+
 
 The design's T7 refuses any frontmatter key the write drops. Measured on Claude Code 2.1.287: on a Write into a memory folder the harness moves every top-level key except `name` and `description` under `metadata:`, and stamps `node_type`, `originSessionId` and `modified` afresh. Read literally, T7 then refuses an ordinary rewrite: `kind` "vanishes" from the top level when it sits under `metadata:`, and Claude is told to keep a session id the harness replaces anyway.
 
-- **(a) Level-blind, the stamped three exempt** — *provisional default.* `kind` and `metadata.kind` are one field; dropping `type`, `source`, `review-by` or any other field is still refused.
+- **(a) Level-blind, the stamped three exempt.** `kind` and `metadata.kind` are one field; dropping `type`, `source`, `review-by` or any other field is still refused.
 - (b) Literal: every key at every level. Refuses rewrites that lose nothing.
 
-**Recommendation: (a).** It keeps what T7 is for (the field Sonnet dropped on a rename in the memory test) without the false refusals.
+### F2. CLAUDE.md P1 says "at the top level"; the harness moves the field — decided
 
-### F2. CLAUDE.md P1 says "at the top level"; the harness moves the field
+**Decided by the owner, 2026-10-29: (b).** The owner's `CLAUDE.md` is his to edit and was changed outside this repo; T2's message now says "add `kind:` to the frontmatter" to match.
+
 
 P1, now live in the global `CLAUDE.md`, says to add `kind:` "at the top level of its frontmatter, beside Claude Code's own `type`". The harness moves it under `metadata:` on the next Write, so a file Claude wrote by the rule does not look like the rule afterwards. Every check reads both levels, so nothing breaks either way. This is the owner's text, so it needs his OK.
 
-- (a) Keep the wording — *provisional default* (no change to the owner's file).
-- (b) Reword to "in its frontmatter (Claude Code may move it under `metadata:`)". The rule then matches what lands on disk, and a reader comparing a file with the rule is not misled.
+- (a) Keep the wording.
+- **(b) Reword to "in its frontmatter (Claude Code may move it under `metadata:`)".** The rule then matches what lands on disk, and a reader comparing a file with the rule is not misled.
 
-**Recommendation: (b).** The relabelled files carry `kind` at the top level and will move under `metadata:` on their next Write; (b) says that is expected.
+### F3. Where the plugin is listed — decided
 
-### F3. Where the plugin is listed
+**Decided by the owner, 2026-10-29: (d), in `embarch-umbrella`.** The `embarch` marketplace moves there and lists every suite plugin; the id stays `embarch-promptu@embarch`. **Not moved yet:** the move touches the installed desk plugin and happens after step 1's review passes, outside this build.
+
 
 The design names the plugin `embarch-promptu@embarch`. The `embarch` marketplace lives in embarch-desk's repo (`.claude-plugin/marketplace.json`), which this build may not edit.
 
 - (a) Add an `embarch-promptu` entry to the `embarch` marketplace in embarch-desk's repo, its source pointing at this repo. Keeps the decided id; one marketplace for the suite. Unknown: whether a marketplace entry can point at a subfolder (`plugin/`) of another GitHub repo; check before doing it.
 - (b) A marketplace file in this repo named `embarch`: clashes with the desk's when both are added.
 - (c) A marketplace here named `embarch-promptu`: the id becomes `embarch-promptu@embarch-promptu`, against the decision.
-- (d) Move the `embarch` marketplace to a neutral repo (embarch-doc, or a new one) listing every suite plugin.
-- *Provisional default:* none shipped. Tests install from a scratch marketplace under `/tmp` into a scratch `CLAUDE_CONFIG_DIR`.
-
-**Recommendation: (a)** now; (d) when a third suite plugin appears.
+- **(d) Move the `embarch` marketplace to a neutral repo listing every suite plugin.**
+- Until the move, nothing ships a marketplace entry. Tests install from a scratch marketplace under `/tmp` into a scratch `CLAUDE_CONFIG_DIR`.
 
 ### F4. I3 on a brand-new index — decided
 

@@ -40,7 +40,7 @@ cargo build --release
 install -Dm755 target/release/promptu ~/.local/share/embarch/bin/promptu   # any folder on PATH; -D makes it
 ```
 
-The plugin is in [`plugin/`](plugin). Where it will be listed is still open ([docs/forks.md](docs/forks.md) F3); to try it in one session without installing anything, run `claude --plugin-dir /path/to/embarch-promptu/plugin`.
+The plugin is in [`plugin/`](plugin). It will be listed in the suite's `embarch` marketplace, which is moving to [embarch-umbrella](https://github.com/gabrieltetar/embarch-umbrella) ([docs/forks.md](docs/forks.md) F3); until then, try it in one session without installing anything: `claude --plugin-dir /path/to/embarch-promptu/plugin`.
 
 **Choose the mode** in `~/.config/embarch-promptu/config.toml`:
 

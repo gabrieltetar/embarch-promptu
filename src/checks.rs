@@ -253,11 +253,11 @@ fn kind_of(map: &serde_yaml::Mapping, out: &mut Vec<Finding>) -> Option<String> 
     let (top, nested) = (as_text(top), as_text(nested));
     let kind = match (&top, &nested) {
         (None, None) => {
-            out.push(err("T2", None, format!("add `kind:` at the top level of the frontmatter: {KIND_LIST}")));
+            out.push(err("T2", None, format!("add `kind:` to the frontmatter: {KIND_LIST}")));
             return None;
         }
         (Some(a), Some(b)) if a != b => {
-            out.push(err("T2", None, format!("`kind: {a}` and `metadata.kind: {b}` disagree; keep one, at the top level")));
+            out.push(err("T2", None, format!("`kind: {a}` and `metadata.kind: {b}` disagree; keep one")));
             return None;
         }
         (Some(k), _) | (None, Some(k)) => k.clone(),
