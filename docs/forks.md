@@ -28,7 +28,7 @@ P1, now live in the global `CLAUDE.md`, says to add `kind:` "at the top level of
 
 ### F3. Where the plugin is listed — decided
 
-**Decided by the owner, 2026-10-29: (d), in `embarch-umbrella`.** The `embarch` marketplace moves there and lists every suite plugin; the id stays `embarch-promptu@embarch`. **Moved 2026-10-29, pending re-registration:** `embarch-umbrella/.claude-plugin/marketplace.json` lists this plugin beside `embarch-desk` and `embarch-chat`, each a `github` source with `path: plugin` — a shape Claude Code 2.1.287 accepts, read from its binary and not yet tried — and embarch-desk's file is gone. The owner's Claude Code still has the old registration until it adds the marketplace from `embarch-umbrella`.
+**Decided by the owner, 2026-10-29: (d), in `embarch-umbrella`.** The `embarch` marketplace moves there and lists every suite plugin; the id stays `embarch-promptu@embarch`. **Moved and re-registered 2026-10-29:** `embarch-umbrella/.claude-plugin/marketplace.json` lists this plugin beside `embarch-desk` and `embarch-chat`, each a `git-subdir` source (`url` + `path: plugin`); a `github` source with `path` installed the whole repo instead [measured on Claude Code 2.1.287]. embarch-desk's file is gone.
 
 
 The design names the plugin `embarch-promptu@embarch`. The `embarch` marketplace lived in embarch-desk's repo (`.claude-plugin/marketplace.json`), which this build may not edit.
