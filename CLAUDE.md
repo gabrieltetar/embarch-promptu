@@ -16,6 +16,6 @@ Update them proactively per [../embarch-doc/DOC-PROTOCOL.md](../embarch-doc/DOC-
 
 ## Gate
 
-`cargo build`, `cargo test --all-targets` and `cargo clippy --all-targets -- -D warnings`. Before a commit: `python3 ../embarch-fleet/scripts/check-client-names.py --repo .`, and `python3 ../.atlas-local/tools/check_public.py .` from this folder, gated on its exit code directly. Never run `cargo fmt`: the suite is not rustfmt-styled.
+`cargo build`, `cargo test --all-targets` and `cargo clippy --all-targets -- -D warnings`. Before a commit: `python3 ../embarch-fleet/scripts/check-client-names.py --repo .`, and the suite's local public-safety check over this folder, gated on its exit code directly, never through a pipe. Never run `cargo fmt`: the suite is not rustfmt-styled.
 
 **The hook's speed is a gate too**: it runs on every Write, Edit and MultiEdit in every session. Keep it free of model calls, network and async runtimes, and re-measure (docs/contract.md §3.8) after touching its path.
