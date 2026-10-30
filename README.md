@@ -37,6 +37,7 @@ The eleven patterns are in [`patterns/`](patterns): implement an issue, a review
 promptu prep < rough.txt      # pick, fill, plan the questions (JSON)
 promptu next <run>            # a page of answers in (JSON), what is left out
 promptu render <run>          # the prompt and its footer
+promptu patterns [--json]     # the patterns, for a picker
 promptu lint [--show]         # check pattern files; --show renders every example
 ```
 
@@ -59,7 +60,7 @@ Promptu gives every memory two labels and checks every write:
 A **PreToolUse hook** looks at every Write, Edit and MultiEdit into an auto-memory folder, works out the file as the write would leave it, and checks only what the write touches: the labels (T1–T5), no appended update paragraphs (T6), no dropped fields (T7), and index lines of at most 150 characters, under an existing domain, one per file (I1–I5). It makes no model call, starts in about a millisecond, and **fails open**: any problem of its own lets the write through. It starts in **warn mode** (the write goes ahead and Claude is told what to fix); **block mode** refuses a write with an error until it is fixed.
 
 ```sh
-promptu memory              # what loads here: scope → domain → kind, with stale flags
+promptu memory              # what loads here: scope → domain → kind, with stale flags and where each is used
 promptu memory --json       # the same, for a UI
 promptu memory check        # run the checks on this project's memory as it stands
 promptu memory check PATH   # ...or on given files or folders
@@ -90,7 +91,7 @@ memory_hook = "warn"   # "warn" (default) · "block" · "off"
 
 [EmbArch](https://github.com/gabrieltetar/embarch-doc) is an optional integration. Promptu looks for two of its parts in the session and uses them when they are there:
 
-- **The desk** (`desk`): `/promptu` reads the session's work item (title, description, comments) as one more source, and a few options appear, such as reading the issue with the desk's tools or leaving a handoff note on the work item.
+- **The desk** (`desk`): `/promptu` reads the session's work item (title, description, comments) as one more source, and a few options appear, such as reading the issue with the desk's tools or leaving a handoff note on the work item. The desk's **Start work** types `/promptu --item <id> Work on KEY — title` for you, and Promptu then takes implementing the issue as the default kind of task (`prep --start`).
 - **The bench tools** (`embarch-api`): bench sessions offer to build, flash and run through EmbArch's tools.
 
 Without them those options are hidden and the generic ones remain, for example "flash with the project's own tooling". The `/promptu` skill detects the parts from the tools the session has; to force one either way:
@@ -105,7 +106,7 @@ Inside EmbArch the binary is installed with the suite's others, in `~/.local/sha
 
 ## What comes next
 
-A weekly review of what the patterns got wrong: a ✓/✕ sheet as a Markdown file, applied with `promptu week apply` or reviewed with a `/promptu:review` skill, and shown in EmbArch's Desk when that is there. Then, inside EmbArch, the pass in the chat panel (the desk's Start work runs it on the issue) and more reference kinds for the chat's linker.
+A weekly review of what the patterns got wrong: a ✓/✕ sheet as a Markdown file, applied with `promptu week apply` or reviewed with a `/promptu:review` skill, and shown in EmbArch's Desk when that is there. Then more reference kinds for EmbArch chat's linker. (The pass inside EmbArch's chat panel, with its Memory and Promptu menus, is EmbArch chat's own; it runs this CLI.)
 
 ## Docs
 
