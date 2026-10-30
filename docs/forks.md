@@ -173,7 +173,7 @@ They used to be asked costliest gap first, then in pattern order, so `bench-sess
 
 ## Step 3: the chat, desk Start work, the Memory menu (2026-10-30)
 
-**Decided by the owner on 2026-10-30:** P1–P11, P13 and P14, each marked below and recorded as a numbered decision in `embarch-doc/embarch-promptu/decisions.md` (33 amended, 34–40), and **P16–P17**, met building the Usage icon the owner added the same day, recorded in `embarch-chat` decisions 94 and 99. **P12 and P15 stay open** on their provisional defaults, and **P18–P19**, met fixing review round 2, are open. Built in `embarch-promptu` (decisions 32–33), `embarch-chat` (its decisions 94–99, 11 reversed) and `embarch-desk` (its decision 67). Ranked by consequence.
+**Decided by the owner on 2026-10-30:** P1–P11, P13 and P14, each marked below and recorded as a numbered decision in `embarch-doc/embarch-promptu/decisions.md` (33 amended, 34–40), **P16–P17**, met building the Usage icon the owner added the same day, recorded in `embarch-chat` decisions 94 and 99, and **P18–P19**, met fixing review round 2, recorded in `embarch-chat` decision 96. **P12 and P15 stay open** on their provisional defaults. Built in `embarch-promptu` (decisions 32–33), `embarch-chat` (its decisions 94–99, 11 reversed) and `embarch-desk` (its decision 67). Ranked by consequence.
 
 ### P1. Start work with no Promptu prompt: send the desk's starter, or leave it in the draft — decided: (a)
 
@@ -363,7 +363,9 @@ The Usage icon reads the one source the chat has, the `rate_limit_event` a chat'
 
 **Recommendation: (b)**: a reading an hour old, marked as such, beats none for an account-wide number; it stores no more than the decision-82 kind of state the card's switches use.
 
-### P18. A run whose chat's process closes under it
+### P18. A run whose chat's process closes under it — decided: (a)
+
+**Decided by the owner, 2026-10-30: (a), one line and the draft kept.** Built so. `embarch-chat` decision 96.
 
 Review F11 bounded Promptu's hold on a chat's process: it holds only while the chat's page shows and the run's last step is under 10 minutes old, so an idle close can now meet a dialog still open (left on a hidden page, or left alone), and a crash always could. The run stops then (the owner's brief: "an active run is still aborted on close"); what the owner sees was left open. Built: (a).
 
@@ -373,7 +375,9 @@ Review F11 bounded Promptu's hold on a chat's process: it holds only while the c
 
 **Recommendation: (a)**: P2 sends the starter on a pass that fails while the owner is there; a close usually means he is not.
 
-### P19. A single-select pre-fill emptied in the dialog
+### P19. A single-select pre-fill emptied in the dialog — decided: (a)
+
+**Decided by the owner, 2026-10-30: (a), a hint and the pre-fill kept.** Built so. `embarch-chat` decision 96.
 
 Review F13: a single-select pre-fill whose Other text is cleared, with no option picked, has no answer. It must never show as "changed by you" while sending nothing. Built: (a).
 
