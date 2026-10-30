@@ -8,7 +8,7 @@
 
 - Every JSON document carries `"promptu": 1`. Adding a field keeps 1. Renaming or removing a field, or changing what one means, bumps it. Readers ignore fields they do not know.
 - Paths are absolute. A date is `YYYY-MM-DD` in local time; `PROMPTU_TODAY=YYYY-MM-DD` pins "today" for tests.
-- A command that can find problems exits 1 when it finds an error, 0 otherwise, and 2 on a usage error (a path that does not exist).
+- A command that can find problems exits 1 when it finds an error, 0 otherwise, and 2 on a usage error (a path that does not exist). Any command but `hook` exits 3 on an internal error, with one `promptu: internal error: …` line on stderr, never Rust's 101 (`hook` fails open instead, §3.6).
 - No model call and no network in anything step 1 ships.
 
 ## 1. Where memory lives
@@ -192,7 +192,7 @@ Unknown, and not guessed:
 
 Runs the T and I checks on memory files **as they stand**: there is no write, so every line counts as touched, and the two checks that compare with Before (T7, I3) are skipped. A path may be a file (`MEMORY.md` gets I1, I2, I4, I5; any other `.md` gets T1–T6) or a folder (its `.md` files, the index first, plus O1 for the folder). With no path, the current directory's memory folder (§1.2); if it does not exist yet, a note on stderr and exit 0.
 
-Exit 1 when any error is found, 0 when there are none (warnings included), 2 when a path does not exist or cannot be read.
+Exit 1 when any error is found, 0 when there are none (warnings included), 2 when a path does not exist or cannot be read, 3 on an internal error (§0).
 
 ```json
 {

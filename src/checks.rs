@@ -89,8 +89,10 @@ pub fn touched(before: Before, after: &str) -> Vec<bool> {
         .collect()
 }
 
+/// Does `s` start with a `YYYY-MM-DD` date? Sliced with `get`, never `[..]`:
+/// the text is the user's, and byte 10 can fall inside a character.
 fn is_date_at(s: &str) -> bool {
-    s.len() >= 10 && NaiveDate::parse_from_str(&s[..10], "%Y-%m-%d").is_ok()
+    s.get(..10).is_some_and(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").is_ok())
 }
 
 /// Does this line open an appended update — `Update:`, `**Update …`,
@@ -119,7 +121,7 @@ pub fn opens_update(line: &str) -> bool {
         return true;
     }
     let r = r.strip_prefix('(').unwrap_or(r);
-    is_date_at(r) && r[10..].trim_start_matches(')').trim_start().starts_with(':')
+    is_date_at(r) && r.get(10..).is_some_and(|rest| rest.trim_start_matches(')').trim_start().starts_with(':'))
 }
 
 /// A `source:` value's format: a URL, a 7–40-hex commit, an absolute path
@@ -558,6 +560,25 @@ mod tests {
         let f = topic(Before::Text(&old), &new, day(TODAY));
         assert_eq!(ids(&f), ["T6"]);
         assert_eq!(f[0].line, Some(9));
+    }
+
+    #[test]
+    fn non_ascii_text_never_panics() {
+        // Byte 10 inside a two-byte character, after a date-like start.
+        for l in ["Updated 2026-10-0é: x", "Update 2026-10-0é: x", "Update (2026-1ü-01): x", "Updated é", "Update é:", "**Update** — ünïcödé", "2026-10-0é"] {
+            let _ = opens_update(l);
+        }
+        assert!(!is_date_at("2026-10-0é"));
+        assert!(!opens_update("Update 2026-10-01 — é: x"));
+        assert!(opens_update("Updated 2026-10-01 — é"));
+        let body = topic_file("kind: status\nreview-by: 2026-1é-01\n") + "Updated 2026-10-0é then more\nÜpdate: not ours\nUpdated 2026-10-01 — é\n";
+        let f = topic(Before::Absent, &body, day(TODAY));
+        assert_eq!(ids(&f), ["T4", "T6"]);
+        // 20 characters of line, then 130 two-byte ones: 150 characters, 280 bytes.
+        let idx = format!("## résumé\n- [Café](café.md) — {}\n", "é".repeat(130));
+        assert!(index(Before::Unknown, &idx, None).is_empty());
+        let idx = format!("## résumé\n- [Café](café.md) — {}\n", "é".repeat(131));
+        assert_eq!(ids(&index(Before::Unknown, &idx, None)), ["I1"]);
     }
 
     #[test]

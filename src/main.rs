@@ -49,12 +49,24 @@ enum MemoryAction {
     },
 }
 
+/// A bug, not a finding: what `memory` and `memory check` exit with when they
+/// panic, instead of Rust's 101 (docs/contract.md §0).
+const INTERNAL_ERROR: i32 = 3;
+
 fn main() {
     let cli = Cli::parse();
     let code = match cli.cmd {
+        // The hook fails open on its own terms: exit 0, nothing printed.
         Cmd::Hook => hook::run(),
-        Cmd::Memory { action: None, json } => show_inventory(json),
-        Cmd::Memory { action: Some(MemoryAction::Check { paths, json }), .. } => check(&paths, json),
+        cmd => {
+            std::panic::set_hook(Box::new(|info| eprintln!("promptu: internal error: {info}")));
+            std::panic::catch_unwind(|| match cmd {
+                Cmd::Memory { action: Some(MemoryAction::Check { paths, json }), .. } => check(&paths, json),
+                Cmd::Memory { action: None, json } => show_inventory(json),
+                Cmd::Hook => 0,
+            })
+            .unwrap_or(INTERNAL_ERROR)
+        }
     };
     std::process::exit(code);
 }

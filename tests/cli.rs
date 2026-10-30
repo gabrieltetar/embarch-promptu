@@ -395,6 +395,26 @@ fn a_worktree_session_reads_the_main_checkouts_memory_and_sources() {
 }
 
 #[test]
+fn memory_check_reads_non_ascii_files_without_panicking() {
+    let s = Scratch::new("utf8");
+    let repo = s.repo("app");
+    let dir = s.memdir(&repo);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("café.md"),
+        "---\nname: café\ndescription: Ünïcödé everywhere\nkind: status\nreview-by: 2026-1é-01\n---\n\nUpdated 2026-10-0é: still fine\n",
+    )
+    .unwrap();
+    std::fs::write(dir.join("MEMORY.md"), "## résumé\n- [Café](café.md) — façade, naïve, 日本語\n").unwrap();
+    let o = s.cmd(&repo).args(["memory", "check", "--json"]).output().unwrap();
+    assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
+    let r: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!(r["errors"], 1); // T4 only: the "Updated" line has no real date
+    let o = s.cmd(&repo).args(["memory"]).output().unwrap();
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+}
+
+#[test]
 fn memory_check_reports_and_gates() {
     let s = Scratch::new("check");
     let repo = s.repo("app");
