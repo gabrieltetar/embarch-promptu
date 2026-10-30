@@ -257,7 +257,7 @@ The memory that loads in the current directory, for the memory menu (terminal no
   | review-by past due | `review_by_past` (on or before today) |
   | source path missing | `source_missing`: a path `source` (not a URL, not a commit) that does not exist |
   | label missing | `bad_frontmatter`, `no_kind`, `no_review_by` (a status without one), `no_source` (a reference without one), `no_domain` (index line under no header), `unindexed` (no index line links it) |
-  | index points nowhere | `dead_link`: an index line whose file is gone (the entry's `file` is where it would be) |
+  | index points nowhere | `dead_link`: an index line whose target does not exist in the folder (the entry's `file` is where it would be). A URL or `#anchor` target is not listed at all; a target that exists but is not a topic file, such as one in a subfolder, is listed with no `dead_link`. |
 
 - **`used`** lists the footers (§6) of the last 30 days naming the entry, newest first. Step 1 does not scan transcripts: `used` is always `[]` and `used_scanned` is `false`. The step that fills it sets `used_scanned: true` and gives each item at least `{ "pattern": "<id>", "question": "<qid>", "date": "YYYY-MM-DD" }`.
 

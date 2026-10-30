@@ -384,12 +384,18 @@ fn auto_entries(dir: &Path, source_root: &Path, today: NaiveDate, scope: &mut Sc
             used: vec![],
         });
     }
-    // Index lines whose file is gone.
+    // Index lines that link no topic file here: a URL or an anchor is not a
+    // memory and is left out; a link to a file that exists elsewhere (a
+    // subfolder) is listed as it is; only a link to nothing is `dead_link`,
+    // the same test I5 applies.
     for (target, l) in linked {
-        if checks::is_url(&target) {
+        if checks::is_url(&target) || target.starts_with('#') {
             continue;
         }
-        let mut flags = vec!["dead_link"];
+        let mut flags = vec![];
+        if !dir.join(&target).exists() {
+            flags.push("dead_link");
+        }
         if l.domain.is_none() {
             flags.push("no_domain");
         }
@@ -409,7 +415,7 @@ fn auto_entries(dir: &Path, source_root: &Path, today: NaiveDate, scope: &mut Sc
             age_days: None,
             review_by: None,
             source: vec![],
-            stale: true,
+            stale: !flags.is_empty(),
             flags,
             used: vec![],
         });

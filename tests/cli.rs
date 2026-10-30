@@ -327,6 +327,11 @@ fn the_inventory_groups_and_flags_the_fixture() {
     std::fs::write(repo.join("CLAUDE.md"), "# app\n\nIntro line.\n\n## Build\nUse the build script.\n\n## Git\nWork on main.\n").unwrap();
     std::fs::write(s.claude().join("CLAUDE.md"), "## Units\nUse metric units.\n").unwrap();
     let dir = s.seed(&repo);
+    std::fs::create_dir_all(dir.join("notes")).unwrap();
+    std::fs::write(dir.join("notes/extra.md"), "x").unwrap();
+    let mut index = std::fs::read_to_string(dir.join("MEMORY.md")).unwrap();
+    index.push_str("- [Top](#top) — an anchor\n- [Site](https://example.com/a) — a page\n- [Extra](notes/extra.md) — a file in a subfolder\n");
+    std::fs::write(dir.join("MEMORY.md"), index).unwrap();
     let inv = inventory(&s, &repo.join("tools"));
 
     assert_eq!(inv["promptu"], 1);
@@ -356,12 +361,16 @@ fn the_inventory_groups_and_flags_the_fixture() {
     assert_eq!(flags(entry(&inv, "old-habit.md")), ["no_kind", "no_domain"]);
     assert_eq!(flags(entry(&inv, "orphan.md")), ["unindexed"]);
     assert_eq!(flags(entry(&inv, "gone.md")), ["dead_link"]);
+    // An anchor and a URL are not memories; a file in a subfolder is not dead.
+    assert!(inv["entries"].as_array().unwrap().iter().all(|e| !e["file"].as_str().unwrap().contains("#top") && !e["file"].as_str().unwrap().contains("example.com")));
+    let sub = entry(&inv, "notes/extra.md");
+    assert!(flags(sub).is_empty() && sub["stale"] == false, "{sub}");
     assert!(entry(&inv, "old-habit.md")["chars"].as_u64().unwrap() > 150);
 
     // Order: domains in header order, the domainless last; kinds in their
     // fixed order inside a domain, the unlabelled last.
     let auto: Vec<&str> = inv["entries"].as_array().unwrap().iter().filter(|e| e["scope"] == "auto").map(|e| e["file"].as_str().unwrap().rsplit('/').next().unwrap()).collect();
-    assert_eq!(auto, ["clamp-trap.md", "soak-test.md", "lint-script.md", "gone.md", "orphan.md", "old-habit.md"]);
+    assert_eq!(auto, ["clamp-trap.md", "soak-test.md", "lint-script.md", "gone.md", "extra.md", "orphan.md", "old-habit.md"]);
     let md = entry(&inv, "app/CLAUDE.md");
     assert_eq!(md["id"], "claude-md");
     assert_eq!(inv["counts"]["stale"], 5);
