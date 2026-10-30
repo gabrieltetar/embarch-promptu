@@ -1,7 +1,7 @@
 ---
 name: promptu
 description: Turn a rough task prompt into a good one before working on it. Promptu picks the kind of task, fills in what the prompt, the work item, memory and last time's answers already say, asks only what is missing (recommended answers first), writes a short headed prompt with the user's own words kept verbatim, and asks "send as is / edit" before anything runs. Only when the user types /promptu.
-argument-hint: "[pattern=<id>] [--rec] <rough prompt>"
+argument-hint: "[--item <wNN>] [pattern=<id>] [--rec] <rough prompt>"
 disable-model-invocation: true
 allowed-tools: Bash(promptu prep:*), Bash(promptu next:*), Bash(promptu render:*)
 ---
@@ -20,9 +20,12 @@ $ARGUMENTS
 
 ## 1. Read the arguments
 
-- A leading `pattern=<id>` becomes `--pattern <id>` (`pattern=none` means "no pattern").
-- A leading `--rec` becomes `--rec`: every question takes its recommended answer and nothing is asked.
-- Everything else is the **rough prompt**. Keep it exactly as typed, line breaks included.
+The leading flags, in any order, then the rough prompt:
+
+- `--item <id>` (an EmbArch desk work item id such as `w12`) means **the desk's Start work typed this**: it is a task start on that work item. Add `--start` to `prep`, and fetch the work item in step 2.
+- `pattern=<id>` becomes `--pattern <id>` (`pattern=none` means "no pattern").
+- `--rec` becomes `--rec`: every question takes its recommended answer and nothing is asked.
+- Everything after the flags is the **rough prompt**. Keep it exactly as typed, line breaks included.
 - No rough prompt at all: ask the user for it in one short line and stop until they answer.
 
 ## 2. Prep
@@ -34,12 +37,14 @@ Promptu works with or without EmbArch. Check which EmbArch parts your tools incl
 
 Pass only those present, comma-separated (`--have desk,embarch-api`), or `--have none`. What needs a missing part is hidden and the generic rest stays.
 
-If you have `desk` and this session has a desk work item, call `desk_work_item` once, write `{"key": …, "title": …, "url": …, "text": …}` (text: its description and the newest comment heads, at most 2,000 characters) to a JSON file in your scratchpad or `/tmp`, and add `--desk <that file>`. Otherwise skip this.
+If you have `desk` and this session has a desk work item, call `desk_work_item` once, write `{"key": …, "title": …, "url": …, "id": …, "text": …}` (text: its description and the newest comment heads, at most 2,000 characters) to a JSON file in your scratchpad or `/tmp`, and add `--desk <that file>`. Otherwise skip this.
+
+With `--item <id>` (Start work) and `desk`, call `desk_work_item` the same way even if you are not sure the session has an item yet: Start work claimed this session for that item. Use `<id>` as the file's `id`. If the desk answers that the session is not on a work item, carry on without `--desk`; do not call `desk_set_work_item`. Without `desk`, `--item` still adds `--start`.
 
 Run, with the rough prompt in a quoted heredoc (never on the command line, never through `$…` substitution):
 
 ```bash
-promptu prep --have <parts|none> [--pattern <id>] [--rec] [--desk <file>] <<'PROMPTU_ROUGH_PROMPT'
+promptu prep --have <parts|none> [--start] [--pattern <id>] [--rec] [--desk <file>] <<'PROMPTU_ROUGH_PROMPT'
 <the rough prompt, exactly>
 PROMPTU_ROUGH_PROMPT
 ```

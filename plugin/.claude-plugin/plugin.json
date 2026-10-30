@@ -1,6 +1,6 @@
 {
   "name": "embarch-promptu",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Promptu: /promptu turns a rough task prompt into a good one (the kind of task picked, what the prompt, work item, memory and last time already say filled in, only the missing questions asked, your words kept verbatim), and every write into Claude Code's auto memory is checked (a kind on each memory, a review date on status, a source on references, index lines of 150 characters under a domain header). Needs the promptu binary on PATH.",
   "author": {
     "name": "Gabriel Tetar"

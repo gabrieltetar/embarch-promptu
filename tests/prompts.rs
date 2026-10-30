@@ -869,3 +869,18 @@ fn start_work_takes_the_desk_default_over_a_never_pattern() {
     let out = s.json(&repo, &["prep", "--offline", "--start", "--pattern", "handoff"], rough);
     assert_eq!((out["pattern"]["id"].as_str(), out["pattern"]["start_default"].as_bool()), (Some("handoff"), Some(false)));
 }
+
+/// The skill names only flags the CLI takes: its `promptu prep` line against `prep --help`.
+#[test]
+fn the_skills_prep_line_uses_real_flags() {
+    let skill = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("plugin/skills/promptu/SKILL.md")).unwrap();
+    let line = skill.lines().find(|l| l.starts_with("promptu prep ")).unwrap();
+    let s = Scratch::new("skill");
+    let help = String::from_utf8(s.run(&s.root, &["prep", "--help"], "", &[]).stdout).unwrap();
+    let flags: Vec<&str> = line.split(|c: char| c.is_whitespace() || c == '[' || c == ']').filter(|w| w.starts_with("--")).collect();
+    assert!(flags.contains(&"--start") && flags.contains(&"--desk"), "{line}");
+    for f in flags {
+        assert!(help.contains(f), "{f} is not a prep flag");
+    }
+    assert!(skill.contains("argument-hint: \"[--item <wNN>] [pattern=<id>] [--rec] <rough prompt>\""));
+}
