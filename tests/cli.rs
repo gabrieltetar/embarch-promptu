@@ -262,11 +262,16 @@ fn block_mode_can_create_a_new_index_and_give_a_legacy_one_its_domains() {
     // An index with no headers yet: the write that adds them goes through...
     std::fs::write(&idx, "- [Soak](soak.md) — the soak runs nightly\n").unwrap();
     silent(&s.hook(&pre("Write", &idx, json!({ "content": with_headers }))));
-    // ...and once it has them, a new one is refused.
+    // ...and once it has them, a new one is refused,
     std::fs::write(&idx, with_headers).unwrap();
     let o = s.hook(&pre("Edit", &idx, json!({ "old_string": "## testing\n", "new_string": "## testing\n\n## other\n" })));
     assert_eq!(o.status.code(), Some(2));
     assert!(stderr(&o).contains("I3") && stderr(&o).contains("use one of: testing"), "{}", stderr(&o));
+    // ...and so is the first of two writes that would dodge that: dropping
+    // every header so the next write starts from none.
+    let o = s.hook(&pre("Edit", &idx, json!({ "old_string": "## testing\n", "new_string": "" })));
+    assert_eq!(o.status.code(), Some(2));
+    assert!(stderr(&o).contains("removes every domain header"), "{}", stderr(&o));
 }
 
 #[test]

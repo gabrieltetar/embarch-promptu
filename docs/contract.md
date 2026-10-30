@@ -57,7 +57,7 @@ The file opens with a `---` block. It is read the way Claude Code reads it [meas
 
 ### 2.2 The index
 
-- A `## <domain>` header opens each domain. Headers inside a code fence do not count.
+- A `## <domain>` header opens each domain. Headers inside a code fence do not count. Once an index has a header, a tool write may neither add a new one nor remove them all (I3).
 - An **index line** is a line starting `- [` (after indentation): `- [Title](file.md) — the fact itself`. Its link target is the text between `](` and the next `)`, a leading `./` dropped.
 - An index line is at most **150 characters** (Unicode scalar values), sits under a `## ` header, and is the only line linking its file.
 
@@ -115,7 +115,7 @@ Check ids are permanent: a check is never renumbered, and a new one takes a new 
 | T7 | topic | A field in Before's frontmatter is missing from After's, the level ignored. `node_type`, `originSessionId` and `modified` are exempt: Claude Code stamps them on every write. | error |
 | I1 | index | A touched index line is over 150 characters. | error |
 | I2 | index | A touched index line has no `## ` header above it. | error |
-| I3 | index | After has a `## ` header Before does not, **once Before has at least one**. A new index, or one with no headers yet, may add them freely (the owner's answer to [forks](forks.md) F4). | error |
+| I3 | index | **Once Before has at least one `## ` header**: After has a header Before does not, or After has no header at all ("removes every domain header", no line number). A new index, or one with no headers yet, may add them freely (the owner's answer to [forks](forks.md) F4); emptying the list is refused so that cannot be reached in two writes. | error |
 | I4 | index | A touched index line links a file another index line also links. | error |
 | I5 | index | A touched index line links a file not in the memory folder (URLs and `#` anchors skipped). | warning |
 | O1 | index, PostToolUse | A topic file in the folder is linked from no index line. | warning |

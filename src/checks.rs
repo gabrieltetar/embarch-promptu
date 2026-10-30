@@ -347,12 +347,21 @@ pub fn index(before: Before, after: &str, dir: Option<&Path>) -> Vec<Finding> {
     // while it has none — a new index, or one written before domains
     // existed — and checked from then on (decision 21): otherwise block mode
     // could never create or repair a header-less index, since I2 wants every
-    // touched line under a header.
+    // touched line under a header. And a write may not empty the list:
+    // removing every header would make the next write's headers free, so
+    // the rule could be dodged in two writes.
     let old_headers: Vec<String> = match before {
         Before::Text(old) => sections(old).1.into_iter().map(|(_, h)| h).collect(),
         Before::Unknown | Before::Absent => vec![],
     };
     if !old_headers.is_empty() {
+        if headers.is_empty() {
+            out.push(err(
+                "I3",
+                None,
+                format!("this write removes every domain header; keep them, domains are the owner's to change: {}", old_headers.join(" · ")),
+            ));
+        }
         for (i, h) in &headers {
             if !old_headers.contains(h) {
                 out.push(err(
@@ -647,6 +656,26 @@ mod tests {
         // Once there are headers, a new one is refused.
         let more = format!("{INDEX}## later\n");
         assert_eq!(ids(&index(Before::Text(INDEX), &more, None)), ["I3"]);
+    }
+
+    #[test]
+    fn i3_cannot_be_dodged_by_removing_every_header_first() {
+        // Write 1 drops the headers and keeps the lines: refused, so write 2
+        // never starts from a header-less index.
+        let stripped = INDEX.replace("## testing\n", "").replace("## tooling\n", "");
+        let f = index(Before::Text(INDEX), &stripped, None);
+        assert!(f.iter().any(|x| x.check == "I3" && x.line.is_none() && x.message.contains("removes every domain header")), "{f:?}");
+        // Keeping at least one existing header is as before: removing the
+        // other is allowed, adding a new one is refused.
+        let one_kept = INDEX.replace("## tooling\n", "");
+        assert!(index(Before::Text(INDEX), &one_kept, None).is_empty());
+        let one_kept_plus = one_kept.replace("## testing\n", "## testing\n- [New](new.md) — x\n## other\n");
+        let f = index(Before::Text(INDEX), &one_kept_plus, None);
+        assert_eq!(ids(&f), ["I3"]);
+        assert!(f[0].message.contains("new domain `other`"));
+        // A new index, or one that never had headers, still gets them free.
+        assert!(index(Before::Absent, INDEX, None).is_empty());
+        assert!(index(Before::Text(&stripped), INDEX, None).is_empty());
     }
 
     #[test]
