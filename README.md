@@ -1,8 +1,53 @@
 # embarch-promptu
 
-**Promptu keeps Claude Code's memory organised, and from its second build step turns a rough prompt into a good one.** It is part of [EmbArch](https://github.com/gabrieltetar/embarch-doc), works on its own in any Claude Code setup, and ships as one small Rust binary, `promptu`, plus a Claude Code plugin.
+**Promptu turns a rough prompt into a good one, and keeps Claude Code's memory organised.** It works on its own in any Claude Code setup: one small Rust binary, `promptu`, plus a Claude Code plugin. Nothing else is needed. It also fits into [EmbArch](https://github.com/gabrieltetar/embarch-doc) when that is there (see [With EmbArch](#with-embarch)).
 
-## What it does today (build step 1: memory)
+## Install
+
+1. **The binary**, anywhere on `PATH`:
+
+   ```sh
+   cargo install --git https://github.com/gabrieltetar/embarch-promptu    # into ~/.cargo/bin
+   # or, from a checkout:
+   cargo build --release && install -Dm755 target/release/promptu ~/.local/bin/promptu
+   ```
+
+2. **The plugin** (the memory hooks and the `/promptu` skill), from [`plugin/`](plugin): add the `embarch` marketplace (`gabrieltetar/embarch-umbrella`) and install `embarch-promptu@embarch`, or try it in one session with `claude --plugin-dir /path/to/embarch-promptu/plugin`.
+
+`/promptu` needs Claude Code logged in: its one model call runs through your own `claude` login, with no API key.
+
+## Prompts
+
+Type what you want the way you would anyway, after `/promptu`:
+
+```
+/promptu review the branch, it adds the CAN watchdog
+```
+
+1. **One quick model call** (Claude Sonnet through your own Claude Code login, no tools, nothing saved, about 4 seconds) picks the kind of task from a small set of patterns, and pre-fills what your prompt, your project's memory and last time's answers already say, each with a quote as evidence. A fill whose quote is not really in its source is thrown away.
+2. **It asks only what is missing**, costliest gap first ("when is it done?" comes before "how should fixes be committed?"), in Claude Code's own question dialogs, with a recommended answer first. One option takes the rest as recommended; Esc turns what is left into assumptions the prompt tells Claude to state.
+3. **It writes a short headed prompt**: Goal · Context · Read first · Done when · Constraints · Who does it, only the sections with content, **your own words kept verbatim under Goal**. A brief you paste that is already structured stays word for word; only its gaps are added.
+4. **It shows you the prompt and asks "send as is / edit"** before Claude acts on it.
+
+The last line of every prompt is a footer such as `— promptu review-loop@1 asked=stop:rec,lens:o1+o3 filled=target:prompt`: what was asked, filled and assumed. It is the only record a run leaves, and what a later weekly review learns from.
+
+The eleven patterns are in [`patterns/`](patterns): implement an issue, a review loop, draft a message, relay a colleague's ask, shape a design, address PR comments, research and explain, debug a failure, write a handoff, a bench session, delegate to background agents; plus two fragments (house rules, bench state). Each is one Markdown file: the frontmatter is the quiz, the body the template. Everything specific to you comes from your memory at run time, never from a pattern file.
+
+```sh
+promptu prep < rough.txt      # pick, fill, plan the questions (JSON)
+promptu next <run>            # a page of answers in (JSON), what is left out
+promptu render <run>          # the prompt and its footer
+promptu lint [--show]         # check pattern files; --show renders every example
+```
+
+The `/promptu` skill runs these for you. Settings, in `~/.config/embarch-promptu/config.toml`:
+
+```toml
+pass_effort = "medium"        # the model call's effort: low · medium · high
+voice_skill = "my-voice"      # the skill that writes in your voice, for drafts
+```
+
+## Memory
 
 Claude Code writes memories on its own: one Markdown file per fact in a project's auto-memory folder, and a `MEMORY.md` index of one-line pointers. Left alone, the index lines grow into paragraphs, facts get "Update:" paragraphs appended instead of being rewritten, and nothing says which memories are standing rules, which are traps, and which are status that will go stale.
 
@@ -33,16 +78,7 @@ When you write or update an auto-memory file:
 - When a fact changes, rewrite the memory so it says what is true now; never append an "Update:" paragraph.
 ```
 
-## Install
-
-```sh
-cargo build --release
-install -Dm755 target/release/promptu ~/.local/share/embarch/bin/promptu   # any folder on PATH; -D makes it
-```
-
-The plugin is in [`plugin/`](plugin), listed as `embarch-promptu@embarch` in the suite's `embarch` marketplace in [embarch-umbrella](https://github.com/gabrieltetar/embarch-umbrella) ([docs/forks.md](docs/forks.md) F3). To try it in one session without installing anything: `claude --plugin-dir /path/to/embarch-promptu/plugin`.
-
-**Choose the mode** in `~/.config/embarch-promptu/config.toml`:
+**Choose the hook's mode** in `~/.config/embarch-promptu/config.toml`:
 
 ```toml
 memory_hook = "warn"   # "warn" (default) · "block" · "off"
@@ -50,13 +86,30 @@ memory_hook = "warn"   # "warn" (default) · "block" · "off"
 
 `PROMPTU_MEMORY_HOOK` in the environment overrides it for one session.
 
+## With EmbArch
+
+[EmbArch](https://github.com/gabrieltetar/embarch-doc) is an optional integration. Promptu looks for two of its parts in the session and uses them when they are there:
+
+- **The desk** (`desk`): `/promptu` reads the session's work item (title, description, comments) as one more source, and a few options appear, such as reading the issue with the desk's tools or leaving a handoff note on the work item.
+- **The bench tools** (`embarch-api`): bench sessions offer to build, flash and run through EmbArch's tools.
+
+Without them those options are hidden and the generic ones remain, for example "flash with the project's own tooling". The `/promptu` skill detects the parts from the tools the session has; to force one either way:
+
+```toml
+[embarch]
+desk = "auto"          # auto (default) · on · off
+embarch-api = "auto"
+```
+
+Inside EmbArch the binary is installed with the suite's others, in `~/.local/share/embarch/bin/`, and the plugin comes from the suite's `embarch` marketplace in [embarch-umbrella](https://github.com/gabrieltetar/embarch-umbrella).
+
 ## What comes next
 
-Build step 2 adds **prompt patterns**: one Markdown file per kind of task, whose frontmatter is a short quiz and whose body is the prompt's template. `/promptu <rough prompt>` picks the pattern, fills what the prompt, the work item, memory and past answers already say, asks only what is missing, and writes a short headed prompt with your own words kept verbatim. Steps 3–5 bring it into EmbArch's chat panel and desk, add a weekly review of what the patterns got wrong, and extend the chat's reference linker.
+A weekly review of what the patterns got wrong: a ✓/✕ sheet as a Markdown file, applied with `promptu week apply` or reviewed with a `/promptu:review` skill, and shown in EmbArch's Desk when that is there. Then, inside EmbArch, the pass in the chat panel (the desk's Start work runs it on the issue) and more reference kinds for the chat's linker.
 
 ## Docs
 
-- [docs/contract.md](docs/contract.md): every interface, the hook's exact I/O and checks, and what is measured vs assumed.
+- [docs/contract.md](docs/contract.md): every interface: the hook's exact I/O and checks, the pattern format, `prep`/`next`/`render`'s JSON, the footer, and what is measured vs assumed.
 - [docs/forks.md](docs/forks.md): design choices waiting for the owner.
 - Design and decisions: [embarch-doc/embarch-promptu](https://github.com/gabrieltetar/embarch-doc/tree/main/embarch-promptu).
 

@@ -1,15 +1,26 @@
-//! promptu: Promptu's CLI. Build step 1 is memory: the hook every memory
+//! promptu: Promptu's CLI. Memory (build step 1): the hook every memory
 //! write passes through, the checks it runs, and the inventory the memory
-//! menu draws. docs/contract.md is the interface; embarch-doc's
-//! embarch-promptu/spec.md is current truth.
+//! menu draws. Prompts (build step 2): `prep` picks a pattern and fills what
+//! the sources say, `next` takes the answers page by page, `render` writes
+//! the prompt and its footer, `lint` checks the pattern files.
+//! docs/contract.md is the interface; embarch-doc's embarch-promptu/spec.md
+//! is current truth.
 
 mod checks;
 mod claude;
 mod config;
+mod footer;
 mod frontmatter;
 mod hook;
 mod inventory;
+mod lint;
+mod mustache;
+mod pass;
+mod pattern;
+mod prep;
+mod run;
 mod sha1;
+mod state;
 
 use checks::{Before, Finding, Severity};
 use clap::{Parser, Subcommand};
@@ -17,7 +28,7 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
-#[command(name = "promptu", version, about = "Promptu: Claude Code memory checks and inventory (prompt patterns from build step 2)")]
+#[command(name = "promptu", version, about = "Promptu: Claude Code memory checks and inventory, and a rough prompt turned into a good one")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -35,6 +46,53 @@ enum Cmd {
     },
     /// Check a memory write: Claude Code hook JSON on stdin (what the plugin runs).
     Hook,
+    /// Pick a pattern for the rough prompt on stdin, fill what its sources say, plan the questions (docs/contract.md §7).
+    Prep {
+        /// Use this pattern (or `none`) instead of picking one.
+        #[arg(long)]
+        pattern: Option<String>,
+        /// Take every recommendation: no questions.
+        #[arg(long)]
+        rec: bool,
+        /// The work item: a JSON file (key, title, url, id, text) or plain text.
+        #[arg(long)]
+        desk: Option<PathBuf>,
+        /// Skip the model: the keyword pick, nothing filled.
+        #[arg(long)]
+        offline: bool,
+        /// The EmbArch parts this session has: desk, embarch-api (comma-separated; `none`).
+        #[arg(long, value_delimiter = ',')]
+        have: Vec<String>,
+    },
+    /// Record a page of answers (JSON on stdin) and print the pages left (§7.5).
+    Next {
+        /// The run id `prep` printed.
+        run: String,
+    },
+    /// Write the prompt and its footer from a run and its answers (§8).
+    Render {
+        /// The run id `prep` printed.
+        run: String,
+        /// End the dialog: the questions left take their recommendation, or become stated assumptions (Esc).
+        #[arg(long, value_parser = ["recommended", "assume"])]
+        rest: Option<String>,
+        /// Print the prompt alone instead of JSON.
+        #[arg(long)]
+        text: bool,
+    },
+    /// Check pattern files: schema, AskUserQuestion's limits, slots, examples (§7.7).
+    Lint {
+        /// Pattern files or a folder; none: the patterns this binary carries (or PROMPTU_PATTERNS).
+        paths: Vec<PathBuf>,
+        #[arg(long)]
+        json: bool,
+        /// Also print every example as rendered.
+        #[arg(long)]
+        show: bool,
+        /// Render the examples with these EmbArch parts only: desk, embarch-api (default: both; `none`).
+        #[arg(long, value_delimiter = ',')]
+        have: Option<Vec<String>>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -63,6 +121,10 @@ fn main() {
             std::panic::catch_unwind(|| match cmd {
                 Cmd::Memory { action: Some(MemoryAction::Check { paths, json }), .. } => check(&paths, json),
                 Cmd::Memory { action: None, json } => show_inventory(json),
+                Cmd::Prep { pattern, rec, desk, offline, have } => run_prep(prep::PrepArgs { pattern, rec, desk, offline, have }),
+                Cmd::Next { run } => run_next(&run),
+                Cmd::Render { run, rest, text } => run_render(&run, rest, text),
+                Cmd::Lint { paths, json, show, have } => run_lint(&paths, json, show, have),
                 Cmd::Hook => 0,
             })
             .unwrap_or(INTERNAL_ERROR)
@@ -100,6 +162,116 @@ fn debug_panic() {}
 
 fn cwd() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
+fn read_stdin() -> String {
+    use std::io::Read;
+    let mut s = String::new();
+    let _ = std::io::stdin().read_to_string(&mut s);
+    s
+}
+
+/// A command's JSON input on stdin; empty means `{}`.
+fn stdin_json() -> Result<serde_json::Value, prep::Fail> {
+    let s = read_stdin();
+    if s.trim().is_empty() {
+        return Ok(serde_json::json!({}));
+    }
+    serde_json::from_str(&s).map_err(|e| prep::Fail::Usage(format!("stdin is not JSON: {e}")))
+}
+
+fn finish(r: Result<serde_json::Value, prep::Fail>, text: bool) -> i32 {
+    match r {
+        Ok(v) => {
+            if text {
+                println!("{}", v["prompt"].as_str().unwrap_or_default());
+            } else {
+                println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+            }
+            0
+        }
+        Err(prep::Fail::Usage(m)) => {
+            eprintln!("promptu: {m}");
+            2
+        }
+        Err(prep::Fail::Other(m)) => {
+            eprintln!("promptu: {m}");
+            1
+        }
+    }
+}
+
+fn run_prep(args: prep::PrepArgs) -> i32 {
+    debug_panic();
+    finish(prep::prep(&read_stdin(), args), false)
+}
+
+fn run_next(run: &str) -> i32 {
+    debug_panic();
+    finish(stdin_json().and_then(|v| prep::next(run, &v)), false)
+}
+
+fn run_render(run: &str, rest: Option<String>, text: bool) -> i32 {
+    debug_panic();
+    let r = stdin_json().and_then(|mut v| {
+        if let (Some(r), Some(o)) = (rest, v.as_object_mut()) {
+            o.insert("rest".into(), serde_json::json!(r));
+        }
+        prep::render(run, &v)
+    });
+    finish(r, text)
+}
+
+fn run_lint(paths: &[PathBuf], json: bool, show: bool, have: Option<Vec<String>>) -> i32 {
+    debug_panic();
+    let set = if paths.is_empty() {
+        match pattern::Set::load() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("promptu: {e}");
+                return 2;
+            }
+        }
+    } else {
+        // A folder is the set; files are linted against their own folder's set.
+        let dir = if paths[0].is_dir() { paths[0].clone() } else { paths[0].parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from(".")) };
+        for p in paths {
+            if !p.exists() {
+                eprintln!("{}: no such file or folder", p.display());
+                return 2;
+            }
+        }
+        match pattern::Set::from_dir(&dir) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("{}: {e}", dir.display());
+                return 2;
+            }
+        }
+    };
+    let only = (!paths.is_empty() && !paths[0].is_dir()).then_some(paths);
+    // Only detected parts: `item` follows from the desk and an example's own
+    // work item, never from the command line.
+    let parts: Vec<String> = match have {
+        None => pattern::DETECTED.iter().map(|p| p.to_string()).collect(),
+        Some(h) => h.into_iter().filter(|p| pattern::DETECTED.contains(&p.as_str())).collect(),
+    };
+    let (report, renders) = lint::lint(&set, only, &config::today().to_string(), &parts);
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report).unwrap_or_default());
+    } else {
+        if show {
+            for r in &renders {
+                println!("{r}");
+            }
+        }
+        println!("{}", lint::text(&report));
+    }
+    if report.errors > 0 {
+        1
+    } else {
+        0
+    }
 }
 
 fn show_inventory(json: bool) -> i32 {

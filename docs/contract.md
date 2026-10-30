@@ -1,6 +1,6 @@
 # Promptu: the contract
 
-**Version 1, 2026-10-29.** The interfaces Promptu's five build steps share. Build step 1 (memory) owns §1–§5 and the memory id in §6.3: they are built and tested, and they are fixed. §6 is decided and written from step 2. §7–§10 are sketches: the step that builds each one fills it in and may add to it, but must not change anything §1–§6 fix (§11).
+**Version 1, 2026-10-29.** The interfaces Promptu's five build steps share. Build step 1 (memory) owns §1–§5 and the memory id in §6.3; build step 2 (the terminal pass) owns §6's writer, §7 and §8. Both are built and tested, and what §11 lists is fixed. §9–§10 are sketches: the step that builds each one fills it in and may add to it, but must not change anything §11 fixes.
 
 `[measured]` marks a fact checked against Claude Code 2.1.287 on 2026-10-29, either by running it or by reading its bundle; `[assumed]` marks one that was not. Every example is invented.
 
@@ -9,7 +9,7 @@
 - Every JSON document carries `"promptu": 1`. Adding a field keeps 1. Renaming or removing a field, or changing what one means, bumps it. Readers ignore fields they do not know.
 - Paths are absolute. A date is `YYYY-MM-DD` in local time; `PROMPTU_TODAY=YYYY-MM-DD` pins "today" for tests.
 - A command that can find problems exits 1 when it finds an error, 0 otherwise, and 2 on a usage error (a path that does not exist). Any command but `hook` exits 3 on an internal error, with one `promptu: internal error: <message> (at <file>:<line>:<column>)` line on stderr, never Rust's 101 (`hook` fails open instead, §3.6). A debug build honours `PROMPTU_DEBUG_PANIC` to reach that path in a test; a release build compiles it out.
-- No model call and no network in anything step 1 ships.
+- No model call and no network in anything step 1 ships. Step 2's one model call is `prep`'s pass (§7.3); `lint`, `next` and `render` are model-free.
 
 ## 1. Where memory lives
 
@@ -166,7 +166,7 @@ Any of these exits 0 with nothing printed, so the write goes ahead as it would w
 memory_hook = "warn"   # "warn" · "block" · "off"
 ```
 
-`PROMPTU_MEMORY_HOOK` in the environment wins over the file. A missing file, an unreadable one, or an unknown value means `warn`: a typo never turns blocking on. Other keys belong to later steps and are ignored here.
+`PROMPTU_MEMORY_HOOK` in the environment wins over the file. A missing file, an unreadable one, or an unknown value means `warn`: a typo never turns blocking on. The pass's keys are in §7.6.
 
 ### 3.8 Speed [measured 2026-10-29, release build, WSL2]
 
@@ -296,49 +296,220 @@ Fields appear in this order; one with nothing is left out. Example:
 
 ### 6.2 Meaning
 
-`asked`: questions put to the owner and what he took (`rec` the recommendation, `all` taken by "accept all", `oN` the Nth option, `other` free text). `filled`: questions answered without asking, by source. `skipped`: neither asked nor filled; the default was used. `assume`: left open by Esc, rendered as assumptions Claude must state. `pick=owner`: he switched pattern. `none`: Promptu ran and no pattern was used. A reader takes the last line of a prompt that starts with `— promptu `, ignores fields it does not know, and treats a deleted footer as no run.
+`asked`: questions put to the owner and what he took (`rec` the recommendation, `all` taken by "accept all", `oN` the Nth option, `other` free text). For a `text` question, `rec` is the first option shown (its prompt pre-selection or the pass's first candidate), `oN` counts its static options, then its fallback options (`leave-out`/`not-sure`: the question's own fallback is o(K+1), the other o(K+2), K static options), and another candidate is `other`. `meaning` is the generated ambiguity question (§7.8), `oN` the Nth meaning. `filled`: questions answered without asking, by source. `skipped`: neither asked nor filled; the default was used. `assume`: left open by Esc, rendered as assumptions Claude must state. `pick=owner`: he switched pattern. `mode=brief`, after `pick`: the prompt was a pasted brief, checked for its gaps only (decision 24); `skipped` is then absent, as a brief takes no defaults. `none`: Promptu ran and no pattern was used. A reader takes the last line of a prompt that starts with `— promptu `, ignores fields it does not know, and treats a deleted footer as no run.
 
 ### 6.3 Memory id
 
 **The first six lowercase hex digits of the SHA-1 of the topic file's name**: the name with its `.md`, no directory, as UTF-8. `cache-trap.md` → `de8cea`; `example.md` → `56b97e`. A fill from a `CLAUDE.md` line is `memory.claude-md`, attributed to the file, not the line. An id is unique only within one project's memory folder; two topic files in one folder share an id with probability about n² / 33.5 million (about 1 in 33,000 at 32 files) ([forks](forks.md) F10).
 
-## 7. `promptu prep` (sketch; build step 2)
+## 7. Prompt patterns and `promptu prep` (build step 2)
+
+### 7.1 Pattern files
+
+- **Where.** `patterns/*.md` in this repo, embedded in the binary at build time (`build.rs`). `PROMPTU_PATTERNS=<folder>` replaces the whole set, for development and lint. One public, generic set; anything specific to a user arrives at run time through memory, the desk and last time's answers.
+- **Shape.** A `---` frontmatter block (YAML), then the body: a template (§7.2). `<name>.md` is a task pattern (`kind: task`), `_<name>.md` a fragment (`kind: fragment`) that patterns include and that is never picked.
+
+| Field | Value |
+|---|---|
+| `name` | `[a-z0-9-]{1,64}`, the file's name (a fragment's without its `_`). The footer's pattern. |
+| `description` | 1–1,024 characters: what it is for, and what it is not for. The pass reads it to pick. |
+| `version` | A whole number from 1, bumped by every approved change. The footer's version. |
+| `kind` | `task` or `fragment`. |
+| `signals.phrases`, `signals.not` | Case-insensitive regexes: +1 per phrase hit, −1 per `not` hit: the no-model pre-pick (§7.3's `regex_hint` and the offline fallback). |
+| `signals.desk` | `default` · `possible` · `never`: its role under desk Start work (step 3). |
+| `include` | `[{fragment, recommended?, when?}]`: the fragment's questions join this pattern's, with this pattern's recommendation and condition. |
+| `ask_first` | Question ids (its own or its fragments') asked before all others, in this order, when they are asked at all. `bench-session` asks its bench state first: board, what is plugged in, instruments, the gate (decision 31). |
+| `questions` | The quiz, below. |
+| `examples` | `[{rough, context, answers, note}]`: invented runs. The pass reads their `rough` prompts; lint renders each and the tests pin every render (`tests/golden/`). |
+
+Per question:
+
+| Field | Value |
+|---|---|
+| `id` | `[a-z][a-z_]*`, unique within the pattern with its fragments. Stable across versions: a change of meaning takes a new id. |
+| `header` | 1–12 characters: AskUserQuestion's header. |
+| `ask` | The question. |
+| `type` | `choice` · `multi` · `text` · `bool`. |
+| `options` | `[{label, description, value?}]`: 2–4 for `choice` and `multi`, 0–3 static ones for `text`, 0 or 2 for `bool`. `value` is the instruction rendered into the prompt (the label when absent) and may hold context tokens such as `{{branch}}`. |
+| `recommended` | A label (`choice`, `bool`), a list of labels (`multi`, possibly empty). Required on `choice` and `multi`. |
+| `default` | A label or a value, or for `multi` a list of labels (`[]`: nothing): used when the question is neither asked nor filled. Absent: the recommendation; for `text`, the fallback. The house-rules fragment's is `[]` (decision 25). |
+| `suggest` | 0–3, `text` only: how many candidate answers the pass may propose. |
+| `fallback` | `leave-out` · `not-sure`, `text` only: the option added when fewer than two exist. `not-sure` renders "not known yet; ask me before relying on it". |
+| `required` | Asked whenever no source fills it. |
+| `always_ask` | Asked every run. Only the prompt may pre-select its answer; a fill from any other source becomes a suggestion (a `text` question's candidate) or is dropped. Never `memory` (lint). |
+| `sources` | A subset of `prompt`, `desk`, `memory`, `last`, `context`: where a fill may come from. |
+| `when` | `flag`, `!flag` (`firmware` · `hardware` · `item`), `qid`, `qid == 'L'`, `qid != 'L'`, `qid in ['A','B']`, `qid has 'L'`; it may test only an earlier question or a flag. False: the question does not apply, is not asked, and renders nothing. |
+| `gap` | `G1`…`G16` or `none`: the friction gap it closes. Unanswered questions are asked costliest gap first: G10, G5, G1, G8, G13, G9, G14, G15, G6, G4, G2, G11, G12, G7, G16, G3, then `none`. |
+| `why` | One line, generic: the reason the question exists. |
+| `requires` | `desk` · `embarch-api` · `item`, on a question or on one option: it shows only when the run has that EmbArch part (§7.6), and for `item` only when the desk is present **and** the run has a work item from it (`--desk`); without it, it is hidden and the generic rest remains (decision 29). An option that reads or writes the work item takes `item`, not `desk`. |
+
+### 7.2 Templates
+
+- **Logic-less Mustache**: `{{x}}` and `{{{x}}}` (the same: the output is Markdown and nothing is escaped), sections `{{#x}}…{{/x}}`, inverted sections `{{^x}}…{{/x}}`, list loops with `{{.}}`, dotted names, partials `{{> <fragment>}}`. A line holding only a section tag leaves no line behind. No helpers and no `$`.
+- **Context**: `ask` (the rough prompt, verbatim), `item.key|title|url|id` (when there is a work item; `item` alone is truthy then), `repo`, `branch`, `worktree` (set only in a linked worktree: its path), `today`, `config.<key>` (every string key of `config.toml`, §7.6), the flags `firmware` and `hardware`, and each question id with its value: an option's `value`, the answer's text, or a list for `multi`.
+- **The six sections**, in order: `## Goal` · `## Context` · `## Read first` · `## Done when` · `## Constraints` · `## Who does it`. The post-pass drops a heading whose section is empty, collapses runs of blank lines, closes a blank line between two list items, and trims.
+
+### 7.3 The pass
+
+One stripped `claude -p` per `prep`, run in the empty folder `<state>/pass/`:
 
 ```
-promptu prep [--session <id>] [--item <work item>] [--pattern <id>] [--rec]     # rough prompt on stdin
+claude -p --model <pass_model> --effort <pass_effort> --no-session-persistence --output-format json \
+  --strict-mcp-config --setting-sources "" --tools "" --system-prompt <system>      # message on stdin
 ```
 
-Gathers (no model), runs the one Sonnet pass, guards its fills, and plans the pages. Prints:
+with `EMBARCH_DESK_INTERNAL=1`, `PROMPTU_INTERNAL=1` and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` in its environment (the last drops a side call Claude Code makes on every `-p`, $0.0033 a run, and leaves caching alone [measured 2026-10-29, 2.1.287]). `PROMPTU_CLAUDE` replaces the `claude` binary (tests use a fake). **Thinking cannot be turned off** on Claude Sonnet 5.5 through 2.1.287: `--max-thinking-tokens 0` still returns a thinking block [measured]. `--effort` is the only control, so it is the setting (decision 22).
+
+- **System prompt**: `src/pass_system.md`, a blank line, then the catalogue generated from the set as it shows with the run's EmbArch parts (hidden questions and options are left out, so the model never sees a hidden label; one cached prompt per combination of parts): per task pattern its `## <name>`, its description, `Typical phrases:`, `Example prompts:`, and one line per question (`- `<id>` (<type>; required; always_ask; suggest N; when …; sources …): <ask> Options: <label> (<description>) | …`). It changes only with the patterns, so the prompt cache holds it.
+- **Message**: six tagged blocks, each `(none)` when empty: `<prompt>` (verbatim), `<context>` (`repo:`, `branch:`, `linked worktree:`, `firmware:` lines), `<desk>`, `<memory>` (the project's `MEMORY.md`: `## ` headers, and each index line prefixed `[<memory id>] `; then `## standing rules` and the global `CLAUDE.md` bullets prefixed `[claude-md] `, from the sections `memory_claude_md_sections` names, every section by default; 12,000 characters at most, the index first), `<last>` (`<pattern>.<qid>: <answer>` for each question that takes `last`), and `<regex_hint>` (`<pattern> <score>, …`).
+- **Reply**: one JSON object, `pattern` first:
+
+  ```json
+  {"pattern": "bench-session", "confidence": 0.84, "alt": ["debug-failure"],
+   "flags": {"hardware": true, "firmware": true, "brief": false},
+   "filled": {"flash": {"value": "EmbArch", "source": "memory", "entry": "de8cea", "evidence": "flash through EmbArch only"}},
+   "candidates": {"board": ["Stepper driver rev C, unit 2"]},
+   "relevant": {"timebox": false, "unblocks": true},
+   "ambiguous": [{"phrase": "the rail", "meanings": ["the 5 V rail", "the 12 V rail"]}]}
+  ```
+
+- **Falls back to the keyword pick, nothing filled, `offline: true`**, with the reason, when the binary cannot run, the run passes `pass_timeout_s` (15 s; the child is killed), the reply is an error or holds no JSON object, or `--offline` is given.
+
+### 7.4 The guard (no model)
+
+A fill stands only when all of these hold; otherwise it is listed in `dropped` with its reason and the question is asked:
+
+1. The question belongs to the picked pattern (fragments included).
+2. The question shows with the run's EmbArch parts, and its `source` is in the question's `sources`; an `always_ask` question takes only `prompt` (a `text` answer from another allowed source becomes a candidate instead).
+3. The evidence is at least three words or twelve characters, and, case-, quote-, dash- and whitespace-folded, is found in the source's text on word boundaries (a quote that starts or ends with a letter or digit may not start or end inside a word). A `memory` fill is checked against its `entry`'s line; with no `entry`, the one memory line holding the quote names it.
+4. The value fits the type: a label (`choice`), labels (`multi`), non-empty text (`text`), a bool or label (`bool`), counting only the options that show with the run's parts. A `text` value equal to a hidden option's label (any case) is refused, and a fill is only ever matched to an option that shows. A memory entry is six lowercase hex digits or `claude-md`.
+
+Also: a pattern outside the set means no pick; `alt` keeps at most two known patterns; candidates go to `text` questions only, at most their `suggest`; `relevant` counts only optional questions; an `ambiguous` phrase must occur in the prompt and carry 2–3 meanings.
+
+### 7.5 State
+
+Under `PROMPTU_STATE_DIR`, else `$XDG_STATE_HOME/embarch-promptu`, else `~/.local/state/embarch-promptu`:
+
+| Path | What |
+|---|---|
+| `runs/<run>.json` | One run between `prep` and `render`: the rough prompt, the pick, the guarded fills, candidates, relevance, the answers so far. Deleted 7 days after its last write (each `prep` prunes). |
+| `last/<project>.json` | `{"promptu": 1, "patterns": {"<pattern>": {"date", "version", "answers": {"<qid>": {"answer": {…}, "text": "<as it reads>"}}}}}`: each pattern's latest answers in one project, written by `render`, read as the `last` source. `<project>` is the main checkout's memory-folder name (§1.2). |
+| `drafts/<run>.md` | The rendered prompt, for "edit first". Pruned with the runs. |
+| `pass/` | The empty folder the model runs in. |
+
+A run id is `YYYYMMDD-HHMMSS-<4 hex>`. **The footer remains the only record of what a run asked** (§6); the run file is scratch and `last/` holds no more than the answers themselves ([forks](forks.md) S6).
+
+### 7.6 Configuration
+
+In `config.toml` (§3.7):
+
+```toml
+pass_effort = "medium"     # low · medium · high (decision 22); anything else: medium
+pass_model = "sonnet"
+pass_timeout_s = 15        # 1–600
+voice_skill = "my-voice"   # any string key reaches templates as {{config.<key>}}
+memory_claude_md_sections = ["Working rules"]   # which global CLAUDE.md sections join the memory source; absent: all
+
+[embarch]                  # the optional EmbArch integration (decision 29)
+desk = "auto"              # auto · on · off
+embarch-api = "auto"
+```
+
+**EmbArch parts.** Promptu works alone. A run's parts are each part forced `on` or `off` here, or, with `auto` (the default, and any other value), present when `prep --have` names it. `item` is not configured or detected: `prep` adds it when the run has `desk` and `--desk` gave it a work item. **A hidden question** (its `requires` is missing) is not asked, not filled and not rendered, and is absent from the footer; a `when` that tests it is false, whatever its operator (`!=` and `!` included). **A hidden option** is not shown, cannot be filled or taken, and is not a recommendation: when a choice's recommended option is hidden, its first option that shows is recommended instead, and a skipped question takes it; a multi keeps only what shows. Footer codes still count every option in the file (`oN`).
+
+### 7.7 `promptu lint [<path>...] [--json] [--show] [--have <parts|none>]`
+
+Checks pattern files without a model. No path: the set this binary carries (or `PROMPTU_PATTERNS`); a folder: that set; files: those files, against their folder's set. `--show` prints every example as rendered; `--have` renders them with those EmbArch parts only (`desk`, `embarch-api`; default: both), an answer to something hidden left out. `item` is never taken from `--have`: as in `prep`, an example has it when the desk is among the parts and its context has a work item. Exit 1 when any error is found, 2 when a path does not exist, 0 otherwise.
+
+| Check | Error when |
+|---|---|
+| `schema` | The frontmatter is missing or is not the schema (§7.1). |
+| `name`, `description`, `version`, `kind` | The name's form, its file name (`_` for a fragment), 1–1,024 characters, a version from 1, `task` or `fragment`. |
+| `signals` | A regex does not compile; `desk` is not one of the three. |
+| `include`, `ask_first` | The fragment does not exist, or a recommended label is not one of its labels; an `ask_first` id that is not a question of the pattern. |
+| `id`, `header`, `ask`, `type` | An id's form or a duplicate; a header of 0 or more than 12 characters; no ask; an unknown type. |
+| `options`, `label` | AskUserQuestion's 2–4 options (per type, §7.1); an empty, duplicate or over-60-character label, or one that writes "(Recommended)" itself. A label over 30 characters is a warning. |
+| `recommended`, `default`, `suggest`, `fallback` | Not a real label; missing on `choice` or `multi`; `suggest` over 3 or off `text`; `fallback` missing on `text` or present elsewhere. |
+| `sources`, `volatile` | Empty, or not among the five; an `always_ask` question that takes `memory`. |
+| `when` | Unreadable; testing something that is neither an earlier question nor a flag; a literal that is not a label of the question it tests. |
+| `gap`, `why` | Not `G1`–`G16` or `none`; no why. |
+| `slot`, `partial` | A tag that is not a question id, a context token or a flag; a partial that is not a fragment. In an option's `value`, which is rendered with the context only: a tag naming anything but a context token or a flag, a partial, or a value that does not render. |
+| `example`, `footer` | An answer to an unknown question; a render that fails, leaves a `{{`, or loses the rough prompt; a footer outside §6.1. |
+| `requires` | Not `desk`, `embarch-api` or `item`; a `choice` or `multi` question left with fewer than 2 (or more than 4) options when every EmbArch part (and `item`) is missing. |
+| `size` (warning) | More than 12 questions: speed, not a cap. |
+| `signals` (warning) | An example's keyword pre-pick puts another pattern above its own. |
+
+### 7.8 `promptu prep [--have <parts|none>] [--pattern <id>|none] [--rec] [--desk <file>] [--offline]`
+
+The rough prompt on stdin. Gathers (no model), runs the pass (§7.3), guards it (§7.4), plans the questions, saves the run, prints:
 
 ```json
 {
   "promptu": 1,
-  "run": "<opaque; render takes it back>",
-  "pattern": { "id": "bench-session", "version": 3, "picked_by": "model", "confidence": 0.84, "alt": ["debug-failure"] },
-  "offline": false,
-  "flags": { "firmware": true, "hardware": true, "item": true },
-  "filled": [ { "q": "flash", "value": "<the option's value>", "source": "memory", "entry": "de8cea", "evidence": "<quote found in the source>" } ],
-  "pages": [ { "ids": ["board", "attached", "pass", "_rest"],
-               "questions": [ { "question": "Which board is on the bench?", "header": "Board", "multiSelect": false,
-                                "options": [ { "label": "Same as last time (Recommended)", "description": "…" }, { "label": "…", "description": "…" } ] } ] } ]
+  "run": "20261029-215400-a1b2",
+  "pattern": { "id": "bench-session", "version": 1, "picked_by": "model", "confidence": 0.84, "alt": ["debug-failure"] },
+  "offline": false, "offline_reason": null,
+  "mode": "normal",
+  "parts": ["desk", "embarch-api"],
+  "flags": { "firmware": true, "hardware": true, "item": false },
+  "filled": [ { "q": "flash", "header": "Flash via", "value": "EmbArch", "source": "memory", "entry": "de8cea", "evidence": "flash through EmbArch only" } ],
+  "dropped": [ { "q": "pass", "source": "prompt", "reason": "the evidence is not in the source" } ],
+  "defaults": [ { "q": "heavy", "header": "How heavy", "value": "Overlay or config first" } ],
+  "choose": null,
+  "pages": [ { "ids": ["board", "attached", "instruments", "_rest"],
+               "questions": [ { "question": "Which board is on the bench, with its revision and any reworks?", "header": "Board", "multiSelect": false,
+                                "options": [ { "label": "Stepper driver board (Recommended)", "description": "From your prompt." }, { "label": "Not sure", "description": "The prompt says it is not known yet." } ] } ] },
+             { "ids": ["gate", "pass", "unblocks"], "questions": [ … ] } ],
+  "done": false,
+  "pass": { "ms": 2262, "cost_usd": 0.0157, "effort": "medium" }
 }
 ```
 
-- `pages[].questions` is AskUserQuestion's own input shape: at most 4 questions a page, 2–4 options each, a header of at most 12 characters, the recommended option first with " (Recommended)". `ids` maps each question to its question id; `_rest` is the paging control.
-- `picked_by`: `model`, `regex` (offline fallback), or `flag` (`--pattern`). `entry` is set only for a `memory` fill.
-- Where a run's state is kept between `prep` and `render` is step 2's choice.
+- **`pattern`**: null for no pattern. `picked_by` is `model`, `regex` (offline), `flag` (`--pattern`) or `owner` (switched on the chip row, §8.1).
+- **`--have`**: the EmbArch parts the session has, comma-separated (`desk`, `embarch-api`); `none` or absent: none. With the config they make `parts` (§7.6), plus `item` when the desk is there and `--desk` gave a work item; the output lists them and the run keeps them for `next` and `render`.
+- **`--desk <file>`**: the work item as JSON (`key`, `title`, `url`, `id`, `text`) or plain text. It is the `desk` source, sets `item` and the `item.*` tokens.
+- **`mode`**: `brief` when the prompt is a pasted, already-structured brief: the pass says so, or, without it, the prompt has at least 150 words and two structure markers (headings, label lines, the usual brief sections, a numbered list of three). Decision 24.
+- **`warnings`** (`prep` only): one line for each thing skipped so the run could go on. An unreadable `--desk` file leaves the desk source out. **A run that cannot be saved** (the state folder cannot be written) can have no `next` or `render`, so nothing is asked: every question takes its recommendation, and the output adds `prompt` and `footer`, as `render` would print them, with `pages` empty and `done` true.
+- **`pass`** (`prep` only): the call's wall time in ms, its list-price cost as Claude Code reports it, and the effort used; nulls when offline.
+- **`defaults`**: what the prompt will assume without asking: each question that is neither asked nor filled, and the default it takes.
+- **`choose`**: the chip row, one AskUserQuestion page with id `_pattern`: when the pick is weak (confidence under 0.6), there is none, or the run is offline. Its options are the pick (recommended) and its alternatives, then the keyword ranking, at most three, and "No pattern, send as is" (recommended when nothing was picked). `pages` is empty until it is answered (§8.1). `--pattern` never opens it, and neither does a run with no pattern to offer (the pass found none and no keyword hit): an AskUserQuestion page needs two options, so that run goes on with no pattern and `done` is true.
+- **What is asked**, in order: the pattern's `ask_first` ids that are asked at all, in their order; then required questions no fill answered, costliest gap first; then every `always_ask` question that applies (its prompt fill, if any, pre-selected); then optional questions the pass marked relevant, by gap. **A brief asks only the first two groups**, and its other questions are neither asked nor rendered. Offline, optional questions are not asked. `--rec`: nothing is asked; every question takes its recommendation (`all`).
+- **`pages`**: each is one AskUserQuestion call, in its own input shape. At most 4 questions. When an optional question would be left after a page, the page holds 3 plus the `_rest` control (header `Rest`: "Keep going" recommended, or "Take the rest as recommended"); otherwise it holds up to 4. **The Rest control skips optional questions only**: they take their recommendation (`all`), while required and always-asked questions are still asked on the pages after it. Its description lists what the optional ones take and names those still asked. An ambiguous phrase adds `_meaning` (header `Meaning`) first. A question whose `when` tests an answer still to be given waits for a later page; pages after the first are a forecast, re-planned by `next`.
+- **Options shown**: the recommended one(s) first, marked " (Recommended)"; for a `text` question, its prompt pre-selection, then the pass's candidates, then its static options, then a fallback while fewer than two; at most 4; labels cut to 80 characters. Claude Code adds "Other" itself.
+- **Exit**: 0 with JSON (offline and every warning included); 2 with a message on stderr for no prompt or an unknown `--pattern`; 3 on an internal error (§0). `next` exits 1 when it cannot save the run.
 
-## 8. `promptu render` (sketch; build step 2)
+## 8. `promptu next` and `promptu render` (build step 2)
 
-Input on stdin:
+### 8.1 Input
+
+Both read the same JSON on stdin (empty means `{}`):
 
 ```json
-{ "promptu": 1, "run": "<from prep>",
-  "answers": { "board": { "other": "the rev C unit" }, "attached": ["Probe", "Logic analyzer"], "pass": "Each listed check passes" },
+{ "pattern": "debug-failure",
+  "answers": { "board": "Same as last time (Recommended)", "attached": "Debug probe, Bench supply", "pass": { "other": "it boots" }, "_rest": "Keep going (Recommended)" },
   "rest": "ask" }
 ```
 
-An answer is a label, a list of labels (multi), or `{ "other": "<text>" }`. `rest` is `ask` (every page was answered), `recommended` ("take the rest as recommended"), or `assume` (Esc or a dismissed page: the rest become stated assumptions). Prints `{ "promptu": 1, "prompt": "<markdown, footer included>", "footer": "— promptu …", "sections": ["Goal", "Context", "Done when", "Constraints"] }`; `--text` prints the prompt alone. Rendering is deterministic and model-free.
+- **`pattern`** (or `answers._pattern`): the chip row's answer, a pattern name or "No pattern, send as is" (" (Recommended)" ignored). A switch away from the pass's pick sets `picked_by: owner`. A fill is kept only where the new pattern has a question with the same id that is not asked every run, takes that source, and takes that value (the same labels, §7.4 rule 4); any other fill moves to `dropped`, so its question is asked. Candidates stay for the new pattern's text questions only.
+- **`answers`**, by id: a label as returned (" (Recommended)" ignored, case ignored), a list of labels, a comma-joined string of labels (a multi-select), or `{"other": "<text>"}`. Text that matches no label is free text ("Other"). `_rest: "Take the rest as recommended"` gives the optional questions left their recommendation (`all`); required and always-asked ones stay to be asked. (`rest: recommended`, from `--rec` or `render --rest recommended`, takes every question's recommendation.) `_meaning` takes a meaning or free text. An answer to a question that was filled overrides the fill (`!` in the footer). Answers accumulate across calls.
+- **`rest`**: `ask` (default), `recommended` (the questions left take their recommendation, `all`), or `assume` (Esc: each question left becomes a stated assumption). `render --rest <r>` sets it from the command line.
+- **Exit 2** for an unknown run, stdin that is not JSON, an answer to a question the run does not have, or an unknown `rest`.
+
+### 8.2 `promptu next <run>`
+
+Records the input, re-plans, and prints the same JSON as `prep` (§7.8) for the run as it now stands: `pages` is what is left to ask, `done` is true when nothing is.
+
+### 8.3 `promptu render <run> [--rest recommended|assume] [--text]`
+
+Records the input, then writes the prompt; deterministic and model-free. **Pages left unanswered with no `rest` count as Esc.** Prints `{ "promptu": 1, "run", "pattern", "prompt", "footer", "sections", "draft" }`, or with `--text` the prompt alone; writes `drafts/<run>.md` and this project's `last/` entry. **None of those writes can fail it**: a draft that cannot be written leaves `draft` out, and an unsaved run or last answers change nothing in the output. Rendering again is allowed.
+
+- **A pattern**: its template with the context and the answers (§7.2). An answered `_meaning` adds `By "<phrase>" I mean <meaning>.` to Context. Assumptions add one line to Constraints: `- Not answered; state your assumption before you start: <ask> <ask> …`. A section the prompt lacks is created in its place among the six.
+- **A brief** (decision 24): the rough prompt verbatim, then only what it left open, under the six headings: each answer as a bullet (the option's value when it is a sentence, else `<header>: <value>`), plus the meaning and the assumptions. A fill the brief itself gave adds nothing.
+- **No pattern**: the rough prompt verbatim, a blank line, `— promptu none`.
+- **The value of an answer**: an option's `value` with its context tokens rendered; a candidate's or free text as given; a `not-sure` fallback as "not known yet; ask me before relying on it"; a `leave-out` fallback as nothing.
+- **The footer**: §6, fields in pattern order.
+
+**Speed** [measured 2026-10-29, release build, WSL2]: `render` p50 3.1 ms, p95 3.7 ms; `prep --offline` (everything but the model) p50 7.2 ms. The hook, re-measured with this build's larger binary: p50 0.66 ms, p95 0.81 ms spawned directly, as in §3.8.
 
 ## 9. `promptu desk --json` (sketch; build step 4)
 
@@ -362,6 +533,6 @@ One week's ✓/✕ sheet under the local learning-data folder:
 
 ## 11. What later steps may change
 
-- **Fixed:** §1.2's resolution, §2's labels, the hook's input handling, output shapes, exit codes and fail-open rules (§3), the check ids, the flag vocabulary's existing names, the footer grammar (§6.1) and the memory id (§6.3).
-- **May grow:** new checks with new ids, new flags, new fields in any JSON document, new footer fields placed after `pick` (readers ignore unknown fields).
-- **Open until built:** §7–§10, within §0's rules.
+- **Fixed:** §1.2's resolution, §2's labels, the hook's input handling, output shapes, exit codes and fail-open rules (§3), the check ids, the flag vocabulary's existing names, the footer grammar (§6.1) and the memory id (§6.3). From step 2: the pattern file's fields and their meaning (§7.1), the template's tokens and six sections (§7.2), the shapes of `prep`'s, `next`'s and `render`'s JSON (§7.8, §8), the answer forms `next` and `render` accept (§8.1), and the state paths (§7.5).
+- **May grow:** new checks with new ids, new flags, new fields in any JSON document, new footer fields placed after `pick` (readers ignore unknown fields), new lint checks, new config keys, new sources.
+- **Open until built:** §9–§10, within §0's rules.

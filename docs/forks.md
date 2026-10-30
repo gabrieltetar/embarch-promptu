@@ -1,6 +1,6 @@
 # Promptu: design forks for the owner
 
-Choices the approved design does not settle, met while building. **No agent decides one.** An open fork runs on a provisional default, the most reversible one, until the owner picks; the default is marked. Ranked by consequence. Step 1 (memory), 2026-10-29.
+Choices the approved design does not settle, met while building. **No agent decides one.** An open fork runs on a provisional default, the most reversible one, until the owner picks; the default is marked. Ranked by consequence within each step. Step 1 (memory): F1–F10. Step 2 (the terminal pass): S1–S8, at the end.
 
 **Decided by the owner on 2026-10-29:** F1 (a), F2 (b), F3 (d) in `embarch-umbrella`, F4 (b); each is marked below and recorded as a numbered decision in `embarch-doc/embarch-promptu/decisions.md`. **F5–F10 are open.**
 
@@ -106,3 +106,67 @@ Six hex digits are 24 bits. Two topic files in one project share an id with prob
 - (b) `memory check` warns on a collision, and the footer writer uses eight digits for the colliding pair.
 
 **Recommendation: (a)** at today's folder sizes; (b) is cheap if a folder grows past a few hundred files.
+
+## Step 2: the terminal pass (2026-10-29)
+
+**Decided by the owner on 2026-10-29:** S1, S2 and S3 after the 20-prompt measurement, S4–S7 after the first review round, and S8 after the second; each is a numbered decision in `embarch-doc/embarch-promptu/decisions.md` (22–28, 31). **No step 2 fork is open.**
+
+### S1. The pass's thinking — decided: effort `medium`
+
+**Decided by the owner, 2026-10-29: (b).** Built as such: `pass_effort = "medium"` is the default (contract §7.6); it was `low`, provisional, until the pick.
+
+Thinking cannot be turned off for the decided model through `claude -p`: `--model sonnet` is Claude Sonnet 5.5, and `--max-thinking-tokens 0`, `MAX_THINKING_TOKENS=0` and `alwaysThinkingEnabled: false` all still return a thinking block [measured 2026-10-29, Claude Code 2.1.287]. `--effort` is the only control. Measured on 20 of the owner's real task prompts plus 3 that match no pattern (local results, not in this repo): picks right 16/20 at low, 18/20 at medium, 16/20 at high; the evidence guard kept every fill at all three, and by hand medium's fills were all right while low had 3 wrong of 21; wall time p50 3.6–3.9 s at all three, p95 5.2–6.6 s low, 7.3 s medium, 8.0 s high; the same cost (about $0.02 a run with a new prompt).
+
+- (a) `low`: the closest to the design's "thinking off"; fastest p95.
+- **(b) `medium`**: best picks and fills at the same cost; about 1–2 s more at p95.
+- (c) `high`, Claude Code's default: no gain.
+- (d) Pin Sonnet 4.6, where thinking does turn off: slower (p50 8.5 s), dearer, and fewer right picks (8/11).
+
+### S2. A reply to one PR comment — decided: `address-pr-comments`
+
+**Decided by the owner, 2026-10-29.** A reply to a review comment on a pull request, however small, is `address-pr-comments`; `draft-message` keeps Slack, email and Linear messages. Built: both descriptions and both pick signals reworded so they no longer overlap, `draft-message`'s channels are Linear comment, Linear issue, Slack and email, `address-pr-comments` gains a fourth `which` option, "One comment", and two invented regression examples. The measurement's two misses that recurred at every effort were both of this kind.
+
+### S3. A pasted, already-structured brief — decided: checked for its gaps
+
+**Decided by the owner, 2026-10-29.** The pass runs the pattern of the work the brief describes and asks only the costliest questions it leaves open; the brief stays verbatim and only the answers to those questions are added. The brief's structure is evidence that pre-fills the questions it answers. Built as contract §7.8 and §8.3: "brief mode" asks only the required questions no fill answered and the always-asked ones; the pass flags a brief, and `prep` also detects one without the model; the footer carries `mode=brief`. `handoff`'s description now says it writes a brief and does not run one.
+
+- Rejected: wrapping a brief in its pattern's full template (it rewrites what is already written), and sending it as is (its gaps go unasked).
+
+### S4. A skipped house-rules question — decided: it renders nothing
+
+**Decided by the owner, 2026-10-29: (b), for house rules.** Built: the house-rules fragment's `default` is `[]`, so when the pass judges `rules` not relevant it is skipped and adds nothing; asked or filled, it renders as before. `default` may now be a list for a `multi` question (contract §7.1). Decision 25.
+
+When the pass judged `rules` not relevant, it was skipped and took the including pattern's recommendation: `implement-issue` then added "work in a separate worktree" and "only I open pull requests" without asking.
+
+- (a) As designed: the default is the including pattern's own recommendation.
+- **(b) Nothing**: a constraint nobody chose and the pass saw no reason for does not appear.
+
+### S5. The desk work item in the terminal — decided: through the desk's MCP tool
+
+**Decided by the owner, 2026-10-29: (a).** The `/promptu` skill fetches the work item with the desk's `desk_work_item` tool, when the session has the desk, and passes it as `prep --desk <file>`. **The CLI makes no network calls.** Decision 26.
+
+- (a) The skill fetches it through the desk's MCP tool.
+- (b) `promptu prep --item <key>` calls the desk's `GET /items/{id}/brief` itself.
+
+### S6. Where last time's answers live — decided: the state file
+
+**Decided by the owner, 2026-10-29: (a).** `<state>/last/<project>.json`, written by `render` (contract §7.5). It records the answers only, not the run: the footer stays the record of what was asked. Decision 27.
+
+- (a) A state file of answers only.
+- (b) Derive them from the transcripts' newest rendered prompt: a footer holds only `other`, not the text typed, and an edited draft or a deleted footer loses them.
+
+### S7. A pasted colleague message with no "X asked:" — decided: an invented example
+
+**Decided by the owner, 2026-10-29: (a).** Built: `colleague-relay` gained an invented example of a bare pasted question ("Hey, is the fan connector on these boards keyed, or can it go in backwards?") and its description names the case. The pass reads the examples' rough prompts. Decision 28.
+
+- (a) Teach `colleague-relay` with an invented example.
+- (b) Leave it to the chip row.
+
+### S8. Order of the always-asked questions — decided: the bench state first
+
+**Decided by the owner, 2026-10-29: (b).** A bench session asks the bench state first, board, what is plugged in, instruments and the green light, then the session's own questions. Built as a pattern field, `ask_first` (contract §7.1), set on `bench-session` only. Decision 31.
+
+They used to be asked costliest gap first, then in pattern order, so `bench-session` asked "Instruments" before "Board" and "Plugged in", after the required "Pass means".
+
+- (a) By gap, then pattern order.
+- **(b) The bench state first**, as one bench check.
