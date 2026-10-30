@@ -1,0 +1,8 @@
+{
+  "name": "embarch-promptu",
+  "version": "0.1.0",
+  "description": "Promptu: every write into Claude Code's auto memory is checked — a kind on each memory, a review date on status, a source on references, index lines of 150 characters under a domain header — warn mode first. Needs the promptu binary on PATH.",
+  "author": { "name": "Gabriel Tetar" },
+  "homepage": "https://github.com/gabrieltetar/embarch-promptu",
+  "license": "MIT"
+}
