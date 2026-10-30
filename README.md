@@ -37,7 +37,7 @@ When you write or update an auto-memory file:
 
 ```sh
 cargo build --release
-install -m 755 target/release/promptu ~/.local/share/embarch/bin/   # any folder on PATH
+install -Dm755 target/release/promptu ~/.local/share/embarch/bin/promptu   # any folder on PATH; -D makes it
 ```
 
 The plugin is in [`plugin/`](plugin). Where it will be listed is still open ([docs/forks.md](docs/forks.md) F3); to try it in one session without installing anything, run `claude --plugin-dir /path/to/embarch-promptu/plugin`.
