@@ -428,6 +428,28 @@ fn memory_check_reads_non_ascii_files_without_panicking() {
     assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
 }
 
+/// The exit-3 path, through a panic only a debug build can be asked for
+/// (`PROMPTU_DEBUG_PANIC`; `debug_panic` in main.rs is empty in a release
+/// build). The binary under test is a debug build whenever this test is.
+#[cfg(debug_assertions)]
+#[test]
+fn a_panic_in_a_memory_command_is_one_line_and_exit_3() {
+    let s = Scratch::new("panic");
+    let repo = s.repo("app");
+    s.seed(&repo);
+    for args in [&["memory", "check"][..], &["memory", "--json"][..]] {
+        let o = s.cmd(&repo).args(args).env("PROMPTU_DEBUG_PANIC", "1").output().unwrap();
+        assert_eq!(o.status.code(), Some(3), "{args:?}");
+        assert!(o.stdout.is_empty());
+        let err = stderr(&o);
+        assert_eq!(err.lines().count(), 1, "{err}");
+        assert!(err.starts_with("promptu: internal error: PROMPTU_DEBUG_PANIC is set: a test asked for this panic (at src/main.rs:"), "{err}");
+    }
+    // The hook fails open instead, and the variable does not reach it.
+    let o = s.hook_raw(b"{}", &[("PROMPTU_DEBUG_PANIC", "1")]);
+    silent(&o);
+}
+
 #[test]
 fn memory_check_reports_and_gates() {
     let s = Scratch::new("check");

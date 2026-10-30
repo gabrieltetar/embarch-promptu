@@ -8,7 +8,7 @@
 
 - Every JSON document carries `"promptu": 1`. Adding a field keeps 1. Renaming or removing a field, or changing what one means, bumps it. Readers ignore fields they do not know.
 - Paths are absolute. A date is `YYYY-MM-DD` in local time; `PROMPTU_TODAY=YYYY-MM-DD` pins "today" for tests.
-- A command that can find problems exits 1 when it finds an error, 0 otherwise, and 2 on a usage error (a path that does not exist). Any command but `hook` exits 3 on an internal error, with one `promptu: internal error: …` line on stderr, never Rust's 101 (`hook` fails open instead, §3.6).
+- A command that can find problems exits 1 when it finds an error, 0 otherwise, and 2 on a usage error (a path that does not exist). Any command but `hook` exits 3 on an internal error, with one `promptu: internal error: <message> (at <file>:<line>:<column>)` line on stderr, never Rust's 101 (`hook` fails open instead, §3.6). A debug build honours `PROMPTU_DEBUG_PANIC` to reach that path in a test; a release build compiles it out.
 - No model call and no network in anything step 1 ships.
 
 ## 1. Where memory lives

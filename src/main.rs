@@ -59,7 +59,7 @@ fn main() {
         // The hook fails open on its own terms: exit 0, nothing printed.
         Cmd::Hook => hook::run(),
         cmd => {
-            std::panic::set_hook(Box::new(|info| eprintln!("promptu: internal error: {info}")));
+            std::panic::set_hook(Box::new(|info| eprintln!("{}", internal_error_line(info))));
             std::panic::catch_unwind(|| match cmd {
                 Cmd::Memory { action: Some(MemoryAction::Check { paths, json }), .. } => check(&paths, json),
                 Cmd::Memory { action: None, json } => show_inventory(json),
@@ -71,11 +71,39 @@ fn main() {
     std::process::exit(code);
 }
 
+/// One line for a panic, the message and where it happened: Rust's own
+/// rendering of a panic is two lines (contract §0 promises one).
+fn internal_error_line(info: &std::panic::PanicHookInfo) -> String {
+    let payload = info.payload();
+    let msg = payload
+        .downcast_ref::<&str>()
+        .map(|s| s.to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "a panic with no message".into());
+    let msg = msg.split_whitespace().collect::<Vec<_>>().join(" ");
+    let at = info.location().map(|l| format!(" (at {}:{}:{})", l.file(), l.line(), l.column())).unwrap_or_default();
+    format!("promptu: internal error: {msg}{at}")
+}
+
+/// A debug build only: `PROMPTU_DEBUG_PANIC` makes the `memory` commands
+/// panic, so a test can see the exit-3 path. Compiled out of a release
+/// build, where the variable means nothing.
+#[cfg(debug_assertions)]
+fn debug_panic() {
+    if std::env::var_os("PROMPTU_DEBUG_PANIC").is_some() {
+        panic!("PROMPTU_DEBUG_PANIC is set:\na test asked for this panic");
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn debug_panic() {}
+
 fn cwd() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
 fn show_inventory(json: bool) -> i32 {
+    debug_panic();
     let inv = inventory::build(&cwd(), config::today());
     if json {
         println!("{}", serde_json::to_string_pretty(&inv).unwrap_or_default());
@@ -116,6 +144,7 @@ fn files_in(dir: &Path) -> Vec<PathBuf> {
 }
 
 fn check(paths: &[PathBuf], json: bool) -> i32 {
+    debug_panic();
     let today = config::today();
     // Each file, and whether it came from a folder: O1 is a check on a
     // folder, so an index named on its own gets I1, I2, I4 and I5 only
