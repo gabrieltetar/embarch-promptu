@@ -302,12 +302,13 @@ pub fn is_index_line(line: &str) -> bool {
     line.trim_start().starts_with("- [")
 }
 
-/// The link target of an index line.
+/// The link target of an index line: everything between `](` and the next
+/// `)`, trimmed, a leading `./` dropped (contract §2.2). A file name with a
+/// space in it is one target.
 pub fn link_target(line: &str) -> Option<String> {
     let start = line.find("](")? + 2;
     let end = line[start..].find(')')? + start;
     let t = line[start..end].trim();
-    let t = t.split_once(' ').map_or(t, |(p, _)| p);
     let t = t.strip_prefix("./").unwrap_or(t);
     (!t.is_empty()).then(|| t.to_string())
 }
@@ -659,6 +660,18 @@ mod tests {
         assert_eq!(orphans(&dir, "## a\n- [Other](other.md) — x\n"), ["soak.md"]);
         assert!(orphans(&dir, INDEX).is_empty());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_link_target_runs_to_the_next_parenthesis() {
+        assert_eq!(link_target("- [Notes](my notes.md) — x").as_deref(), Some("my notes.md"));
+        assert_eq!(link_target("- [A](./a.md) — x").as_deref(), Some("a.md"));
+        assert_eq!(link_target("- [A]( a.md ) — x").as_deref(), Some("a.md"));
+        assert_eq!(link_target("- [A]() — x"), None);
+        assert_eq!(link_target("- [A] no link"), None);
+        // Two files whose names differ after a space are two targets.
+        let idx = "## a\n- [One](field notes.md) — x\n- [Two](field log.md) — y\n";
+        assert!(index(Before::Unknown, idx, None).is_empty());
     }
 
     #[test]
