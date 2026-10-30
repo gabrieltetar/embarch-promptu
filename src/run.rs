@@ -689,6 +689,32 @@ fn ask_of(q: &Question, run: &Run) -> AskQuestion {
     }
 }
 
+/// A filled question as a dialog edits it in place (the owner's P13 answer):
+/// its options as a page would show them, the labels of what it holds now,
+/// and any of it that is free text.
+pub fn filled_view(q: &Question, run: &Run, a: &Answer) -> (AskQuestion, Vec<String>, Option<String>) {
+    let ask = ask_of(q, run);
+    let shown = shown_options(q, run);
+    let mut picked = vec![];
+    let mut shown_texts: Vec<&str> = vec![];
+    for (s, o) in shown.iter().zip(ask.options.iter()) {
+        let on = match &s.kind {
+            Kind::Opt(n) => a.opts.contains(n),
+            Kind::Text(t) => {
+                shown_texts.push(t.as_str());
+                a.texts.contains(t)
+            }
+            Kind::Fallback(f) => a.fallback.as_deref() == Some(f.as_str()),
+        };
+        if on {
+            picked.push(o.label.clone());
+        }
+    }
+    let mut free: Vec<String> = a.texts.iter().filter(|t| !shown_texts.contains(&t.as_str())).cloned().collect();
+    free.extend(a.other.iter().cloned());
+    (ask, picked, (!free.is_empty()).then(|| free.join("; ")))
+}
+
 fn meaning_question(a: &Ambiguity) -> AskQuestion {
     AskQuestion {
         question: format!("In your prompt, what does \"{}\" mean?", cut(&a.phrase, 60)),

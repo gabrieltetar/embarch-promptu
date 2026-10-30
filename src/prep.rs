@@ -394,10 +394,23 @@ pub fn describe(run: &Run, set: &Set) -> Value {
     let p = run.pattern(set);
     let qs = p.map(|p| set.questions(p)).unwrap_or_default();
     let header = |id: &str| qs.iter().find(|q| q.id == id).map(|q| q.header.clone()).unwrap_or_default();
+    // A fill a page does not ask can be changed in place (P13): its question as
+    // a page would show it, what it holds now, and whether the owner changed it.
+    let status = run::resolve(run, &qs, false);
     let filled: Vec<Value> = run
         .fills
         .iter()
-        .map(|(q, f)| json!({ "q": q, "header": header(q), "value": f.value, "source": f.source, "entry": f.entry, "evidence": f.evidence }))
+        .map(|(id, f)| {
+            let mut v = json!({ "q": id, "header": header(id), "value": f.value, "source": f.source, "entry": f.entry, "evidence": f.evidence });
+            if let Some((q, run::Status::Filled { answer, changed })) = status.iter().find(|(q, _)| &q.id == id) {
+                let (ask, picked, other) = run::filled_view(q, run, answer);
+                v["ask"] = json!(ask);
+                v["picked"] = json!(picked);
+                v["other"] = json!(other);
+                v["changed"] = json!(changed);
+            }
+            v
+        })
         .collect();
     let defaults: Vec<Value> = if run.choose {
         vec![]

@@ -157,6 +157,34 @@ fn seed_memory(s: &Scratch, repo: &Path) {
 }
 
 #[test]
+fn a_fill_carries_its_question_and_can_be_changed_in_place() {
+    // The owner's P13: the dialog edits a pre-filled answer; the change is an answer, `!` in the footer.
+    let s = Scratch::new("fill-edit");
+    let repo = s.repo("motor-fw", "main");
+    seed_memory(&s, &repo);
+    s.reply(bench_reply());
+    let out = s.json(&repo, &["prep", "--have", "desk,embarch-api"], BENCH_ASK);
+    let fill = |out: &Value, q: &str| out["filled"].as_array().unwrap().iter().find(|f| f["q"] == q).cloned().unwrap();
+    let flash = fill(&out, "flash");
+    assert_eq!(flash["ask"]["header"], "Flash via");
+    assert_eq!(flash["ask"]["multiSelect"], false);
+    let labels: Vec<&str> = flash["ask"]["options"].as_array().unwrap().iter().map(|o| o["label"].as_str().unwrap()).collect();
+    assert_eq!(labels[0], "EmbArch (Recommended)");
+    assert_eq!(flash["picked"], json!(["EmbArch (Recommended)"]));
+    assert_eq!(flash["other"], Value::Null);
+    assert_eq!(flash["changed"], false);
+    // The always-asked board is its page's to ask: no `ask` here.
+    assert!(fill(&out, "board").get("ask").is_none());
+    let run = out["run"].as_str().unwrap();
+    let next = s.json(&repo, &["next", run], &json!({"answers": {"flash": "The vendor tool"}}).to_string());
+    let flash = fill(&next, "flash");
+    assert_eq!(flash["changed"], true);
+    assert_eq!(flash["picked"], json!(["The vendor tool"]));
+    let r = s.json(&repo, &["render", run, "--rest", "recommended"], "{}");
+    assert!(r["footer"].as_str().unwrap().contains("flash:memory.de8cea!"), "{}", r["footer"]);
+}
+
+#[test]
 fn a_bench_run_from_prep_to_render() {
     let s = Scratch::new("bench");
     let repo = s.repo("motor-fw", "feat/reworks");
