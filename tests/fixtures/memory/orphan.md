@@ -6,4 +6,4 @@ metadata:
   type: user
 ---
 
-Prefers tables over prose for comparisons.
+Prefers metric units in reports.

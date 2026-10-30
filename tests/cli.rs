@@ -126,8 +126,8 @@ fn silent(o: &Output) {
     assert!(o.stderr.is_empty(), "stderr: {}", stderr(o));
 }
 
-const GOOD_RULE: &str = "---\nname: no-formatter\ndescription: Never run the formatter on these repos\nkind: rule\nmetadata:\n  type: feedback\n---\n\nNever run the formatter.\n";
-const NO_KIND: &str = "---\nname: no-formatter\ndescription: Never run the formatter on these repos\nmetadata:\n  type: feedback\n---\n\nNever run the formatter.\n";
+const GOOD_RULE: &str = "---\nname: changelog-line\ndescription: Every change gets one changelog line\nkind: rule\nmetadata:\n  type: feedback\n---\n\nEvery change gets one changelog line.\n";
+const NO_KIND: &str = "---\nname: changelog-line\ndescription: Every change gets one changelog line\nmetadata:\n  type: feedback\n---\n\nEvery change gets one changelog line.\n";
 
 #[test]
 fn writes_outside_memory_and_other_tools_pass_untouched() {
@@ -147,7 +147,7 @@ fn writes_outside_memory_and_other_tools_pass_untouched() {
 fn a_well_labelled_write_is_silent() {
     let s = Scratch::new("good");
     let dir = s.seed(&s.repo("app"));
-    silent(&s.hook(&pre("Write", &dir.join("no-formatter.md"), json!({ "content": GOOD_RULE }))));
+    silent(&s.hook(&pre("Write", &dir.join("changelog-line.md"), json!({ "content": GOOD_RULE }))));
 }
 
 #[test]
@@ -155,10 +155,10 @@ fn warn_mode_lets_the_write_through_and_tells_claude_what_to_fix() {
     let s = Scratch::new("warn");
     let dir = s.seed(&s.repo("app"));
     // No config file: warn is the default.
-    let o = s.hook(&pre("Write", &dir.join("no-formatter.md"), json!({ "content": NO_KIND })));
+    let o = s.hook(&pre("Write", &dir.join("changelog-line.md"), json!({ "content": NO_KIND })));
     let ctx = context(&o, "PreToolUse");
     assert!(ctx.contains("warn mode") && ctx.contains("- T2:"), "{ctx}");
-    assert!(ctx.contains("no-formatter.md"));
+    assert!(ctx.contains("changelog-line.md"));
 }
 
 #[test]
@@ -166,7 +166,7 @@ fn block_mode_refuses_an_error_with_exit_2_and_lets_a_warning_through() {
     let s = Scratch::new("block");
     let dir = s.seed(&s.repo("app"));
     s.mode("block");
-    let o = s.hook(&pre("Write", &dir.join("no-formatter.md"), json!({ "content": NO_KIND })));
+    let o = s.hook(&pre("Write", &dir.join("changelog-line.md"), json!({ "content": NO_KIND })));
     assert_eq!(o.status.code(), Some(2));
     assert!(o.stdout.is_empty());
     assert!(stderr(&o).contains("refused") && stderr(&o).contains("- T2:"), "{}", stderr(&o));
@@ -177,7 +177,7 @@ fn block_mode_refuses_an_error_with_exit_2_and_lets_a_warning_through() {
     assert!(ctx.contains("T5") && !ctx.contains("warn mode"), "{ctx}");
 
     // The environment wins over the file.
-    let o = s.hook_raw(pre("Write", &dir.join("no-formatter.md"), json!({ "content": NO_KIND })).to_string().as_bytes(), &[("PROMPTU_MEMORY_HOOK", "warn")]);
+    let o = s.hook_raw(pre("Write", &dir.join("changelog-line.md"), json!({ "content": NO_KIND })).to_string().as_bytes(), &[("PROMPTU_MEMORY_HOOK", "warn")]);
     assert!(context(&o, "PreToolUse").contains("T2"));
 }
 
@@ -190,10 +190,10 @@ fn off_mode_and_bad_input_fail_open() {
         silent(&s.hook_raw(input, &[]));
     }
     s.mode("off");
-    silent(&s.hook(&pre("Write", &dir.join("no-formatter.md"), json!({ "content": NO_KIND }))));
+    silent(&s.hook(&pre("Write", &dir.join("changelog-line.md"), json!({ "content": NO_KIND }))));
     // An unknown mode is warn, never block.
     s.mode("strict");
-    assert!(context(&s.hook(&pre("Write", &dir.join("no-formatter.md"), json!({ "content": NO_KIND }))), "PreToolUse").contains("warn mode"));
+    assert!(context(&s.hook(&pre("Write", &dir.join("changelog-line.md"), json!({ "content": NO_KIND }))), "PreToolUse").contains("warn mode"));
 }
 
 #[test]
@@ -201,18 +201,18 @@ fn an_edit_is_checked_as_the_file_it_leaves_and_one_that_would_not_apply_is_left
     let s = Scratch::new("edit");
     let dir = s.seed(&s.repo("app"));
     s.mode("block");
-    let f = dir.join("probe-reset-trap.md");
+    let f = dir.join("clamp-trap.md");
     // Dropping a field: T7.
-    let o = s.hook(&pre("Edit", &f, json!({ "old_string": "source: docs/missing-wiring-note.md\n", "new_string": "" })));
+    let o = s.hook(&pre("Edit", &f, json!({ "old_string": "source: docs/missing-fixture-note.md\n", "new_string": "" })));
     assert_eq!(o.status.code(), Some(2));
     assert!(stderr(&o).contains("T7") && stderr(&o).contains("`source`"), "{}", stderr(&o));
     // An appended update paragraph: T6, with its line.
-    let o = s.hook(&pre("Edit", &f, json!({ "old_string": "Check the jumper first.\n", "new_string": "Check the jumper first.\n\n**Update 2026-10-29:** it was the jumper.\n" })));
+    let o = s.hook(&pre("Edit", &f, json!({ "old_string": "Push the lever fully down first.\n", "new_string": "Push the lever fully down first.\n\n**Update 2026-10-29:** it was the clamp.\n" })));
     assert!(stderr(&o).contains("T6 (line 12)"), "{}", stderr(&o));
     // old_string not in the file: Claude Code refuses the edit itself.
     silent(&s.hook(&pre("Edit", &f, json!({ "old_string": "no such text", "new_string": "x" }))));
     // A clean body edit passes.
-    silent(&s.hook(&pre("Edit", &f, json!({ "old_string": "Check the jumper first.", "new_string": "Check the jumper before anything else." }))));
+    silent(&s.hook(&pre("Edit", &f, json!({ "old_string": "Push the lever fully down first.", "new_string": "Push the lever all the way down first." }))));
     // MultiEdit applies in order.
     let o = s.hook(&pre("MultiEdit", &f, json!({ "edits": [
         { "old_string": "kind: trap", "new_string": "kind: status" },
@@ -231,15 +231,15 @@ fn an_index_write_is_checked_on_the_lines_it_touches_only() {
     // The legacy long line above every header is untouched: a short new line passes.
     let o = s.hook(&pre("Edit", &idx, json!({
         "old_string": "## tooling\n",
-        "new_string": "## tooling\n- [Orphan](orphan.md) — prefers tables over prose for comparisons\n"
+        "new_string": "## tooling\n- [Orphan](orphan.md) — prefers metric units in reports\n"
     })));
     silent(&o);
     // A long new line, a duplicate link, and a new domain.
-    let long = format!("- [Board again](bench-board.md) — {}\n", "a fact that rambles ".repeat(9));
+    let long = format!("- [Soak again](soak-test.md) — {}\n", "a fact that rambles ".repeat(9));
     let o = s.hook(&pre("Edit", &idx, json!({ "old_string": "## tooling\n", "new_string": format!("## tooling\n{long}\n## fleet\n") })));
     let err = stderr(&o);
     assert_eq!(o.status.code(), Some(2));
-    for want in ["I1", "I4", "I3", "use one of: bench · tooling"] {
+    for want in ["I1", "I4", "I3", "use one of: testing · tooling"] {
         assert!(err.contains(want), "{want}: {err}");
     }
     // A link to a file not there yet is a warning, so it goes through.
@@ -323,9 +323,9 @@ fn the_inventory_groups_and_flags_the_fixture() {
     let s = Scratch::new("inv");
     let repo = s.repo("app");
     std::fs::create_dir_all(repo.join("tools")).unwrap();
-    std::fs::write(repo.join("tools/flash.sh"), "#!/bin/sh\n").unwrap();
+    std::fs::write(repo.join("tools/lint.sh"), "#!/bin/sh\n").unwrap();
     std::fs::write(repo.join("CLAUDE.md"), "# app\n\nIntro line.\n\n## Build\nUse the build script.\n\n## Git\nWork on main.\n").unwrap();
-    std::fs::write(s.claude().join("CLAUDE.md"), "## Response style\nLead with the answer.\n").unwrap();
+    std::fs::write(s.claude().join("CLAUDE.md"), "## Units\nUse metric units.\n").unwrap();
     let dir = s.seed(&repo);
     let inv = inventory(&s, &repo.join("tools"));
 
@@ -337,22 +337,22 @@ fn the_inventory_groups_and_flags_the_fixture() {
     assert_eq!(inv["memory"]["source_root"], repo.to_string_lossy().as_ref());
     let scopes: Vec<&str> = inv["scopes"].as_array().unwrap().iter().map(|s| s["id"].as_str().unwrap()).collect();
     assert_eq!(scopes, ["user", "auto", "project"]);
-    assert_eq!(inv["scopes"][1]["domains"], json!(["bench", "tooling"]));
+    assert_eq!(inv["scopes"][1]["domains"], json!(["testing", "tooling"]));
     assert_eq!(inv["scopes"][2]["domains"], json!(["Build", "Git"]));
 
-    let board = entry(&inv, "bench-board.md");
-    assert_eq!((board["domain"].as_str(), board["kind"].as_str(), board["type"].as_str()), (Some("bench"), Some("status"), Some("project")));
+    let board = entry(&inv, "soak-test.md");
+    assert_eq!((board["domain"].as_str(), board["kind"].as_str(), board["type"].as_str()), (Some("testing"), Some("status"), Some("project")));
     assert_eq!(flags(board), ["review_by_past"]);
     assert_eq!(board["modified"], "2026-09-15");
     assert_eq!(board["age_days"], 44);
     assert_eq!(board["id"].as_str().unwrap().len(), 6);
-    assert_eq!(flags(entry(&inv, "probe-reset-trap.md")), ["source_missing"]);
+    assert_eq!(flags(entry(&inv, "clamp-trap.md")), ["source_missing"]);
     // The harness-moved shape (every label under metadata:) reads the same.
-    let flash = entry(&inv, "flash-tool.md");
+    let flash = entry(&inv, "lint-script.md");
     assert_eq!((flash["kind"].as_str(), flash["type"].as_str()), (Some("rule"), Some("feedback")));
-    assert_eq!(flash["source"], json!(["tools/flash.sh"]));
+    assert_eq!(flash["source"], json!(["tools/lint.sh"]));
     assert!(flags(flash).is_empty());
-    assert_eq!(entry(&inv, "flash-tool.md")["stale"], false);
+    assert_eq!(entry(&inv, "lint-script.md")["stale"], false);
     assert_eq!(flags(entry(&inv, "old-habit.md")), ["no_kind", "no_domain"]);
     assert_eq!(flags(entry(&inv, "orphan.md")), ["unindexed"]);
     assert_eq!(flags(entry(&inv, "gone.md")), ["dead_link"]);
@@ -361,7 +361,7 @@ fn the_inventory_groups_and_flags_the_fixture() {
     // Order: domains in header order, the domainless last; kinds in their
     // fixed order inside a domain, the unlabelled last.
     let auto: Vec<&str> = inv["entries"].as_array().unwrap().iter().filter(|e| e["scope"] == "auto").map(|e| e["file"].as_str().unwrap().rsplit('/').next().unwrap()).collect();
-    assert_eq!(auto, ["probe-reset-trap.md", "bench-board.md", "flash-tool.md", "gone.md", "orphan.md", "old-habit.md"]);
+    assert_eq!(auto, ["clamp-trap.md", "soak-test.md", "lint-script.md", "gone.md", "orphan.md", "old-habit.md"]);
     let md = entry(&inv, "app/CLAUDE.md");
     assert_eq!(md["id"], "claude-md");
     assert_eq!(inv["counts"]["stale"], 5);
@@ -369,7 +369,7 @@ fn the_inventory_groups_and_flags_the_fixture() {
     // The text view says the same, one line per entry.
     let o = s.cmd(&repo).arg("memory").output().unwrap();
     let text = stdout(&o);
-    assert!(text.contains("  ## bench") && text.contains("review_by_past") && text.contains("warn mode"), "{text}");
+    assert!(text.contains("  ## testing") && text.contains("review_by_past") && text.contains("warn mode"), "{text}");
 }
 
 #[test]
@@ -378,7 +378,7 @@ fn a_worktree_session_reads_the_main_checkouts_memory_and_sources() {
     let main = s.repo("app");
     // A source only the main checkout holds (a git-excluded folder, say).
     std::fs::create_dir_all(main.join("docs")).unwrap();
-    std::fs::write(main.join("docs/missing-wiring-note.md"), "x").unwrap();
+    std::fs::write(main.join("docs/missing-fixture-note.md"), "x").unwrap();
     s.seed(&main);
     let wt = s.root.join("home/work/app-ABC-1");
     std::fs::create_dir_all(&wt).unwrap();
@@ -391,7 +391,7 @@ fn a_worktree_session_reads_the_main_checkouts_memory_and_sources() {
     let inv = inventory(&s, &wt);
     assert_eq!(inv["project_root"], main.to_string_lossy().as_ref());
     assert_eq!(inv["memory"]["source_root"], main.to_string_lossy().as_ref());
-    assert!(flags(entry(&inv, "probe-reset-trap.md")).is_empty());
+    assert!(flags(entry(&inv, "clamp-trap.md")).is_empty());
 }
 
 #[test]
@@ -434,14 +434,14 @@ fn memory_check_reports_and_gates() {
     let get = |n: &str| by.iter().find(|(f, _)| f == n).map(|(_, c)| c.clone()).unwrap();
     assert_eq!(by[0].0, "MEMORY.md");
     assert_eq!(get("MEMORY.md"), ["I1", "I2", "I5", "O1"]);
-    assert_eq!(get("bench-board.md"), ["T4"]);
+    assert_eq!(get("soak-test.md"), ["T4"]);
     assert_eq!(get("old-habit.md"), ["T2"]);
-    assert!(get("flash-tool.md").is_empty());
-    assert!(get("probe-reset-trap.md").is_empty());
+    assert!(get("lint-script.md").is_empty());
+    assert!(get("clamp-trap.md").is_empty());
     assert_eq!(r["errors"], 4);
 
     // A clean file alone passes; a missing path is a usage error.
-    let clean = s.memdir(&repo).join("flash-tool.md");
+    let clean = s.memdir(&repo).join("lint-script.md");
     assert_eq!(s.cmd(&repo).args(["memory", "check"]).arg(&clean).output().unwrap().status.code(), Some(0));
     assert_eq!(s.cmd(&repo).args(["memory", "check", "/no/such/place"]).output().unwrap().status.code(), Some(2));
 }

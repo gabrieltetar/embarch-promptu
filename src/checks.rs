@@ -430,7 +430,7 @@ mod tests {
     }
 
     fn topic_file(fields: &str) -> String {
-        format!("---\nname: flash-tool-trap\ndescription: The vendor flasher resets the board twice\n{fields}---\n\nThe body.\n")
+        format!("---\nname: cache-trap\ndescription: The build cache keeps stale generated headers\n{fields}---\n\nThe body.\n")
     }
 
     #[test]
@@ -438,7 +438,7 @@ mod tests {
         for fields in [
             "kind: preference\nmetadata:\n  type: user\n",
             "kind: rule\nmetadata:\n  type: feedback\n",
-            "kind: trap\nsource: tools/flash.sh\nmetadata:\n  type: feedback\n",
+            "kind: trap\nsource: tools/lint.sh\nmetadata:\n  type: feedback\n",
             "kind: reference\nsource: https://example.com/datasheet.pdf\nmetadata:\n  type: reference\n",
             "kind: status\nreview-by: 2026-12-01\nmetadata:\n  type: project\n",
         ] {
@@ -456,7 +456,7 @@ mod tests {
         for (top, moved) in [
             ("kind: preference\nmetadata:\n  type: user\n", "metadata:\n  kind: preference\n  type: user\n"),
             ("kind: rule\nmetadata:\n  type: feedback\n", "metadata:\n  kind: rule\n  type: feedback\n"),
-            ("kind: trap\nsource: tools/flash.sh\nmetadata:\n  type: feedback\n", "metadata:\n  kind: trap\n  source: tools/flash.sh\n  type: feedback\n"),
+            ("kind: trap\nsource: tools/lint.sh\nmetadata:\n  type: feedback\n", "metadata:\n  kind: trap\n  source: tools/lint.sh\n  type: feedback\n"),
             ("kind: reference\nsource: /opt/vendor/manual.pdf\nmetadata:\n  type: reference\n", "metadata:\n  kind: reference\n  source: /opt/vendor/manual.pdf\n  type: reference\n"),
             ("kind: status\nreview-by: 2026-12-01\nmetadata:\n  type: project\n", "metadata:\n  kind: status\n  review-by: 2026-12-01\n  type: project\n"),
         ] {
@@ -532,7 +532,7 @@ mod tests {
             "src/main.rs",
             "README.md",
             "Makefile",
-            "/home/someone/tools/flash.sh",
+            "/home/someone/tools/build.sh",
             "~/scratch/notes",
             "/mnt/c/Program Files/Vendor/tool.exe",
             "https://example.com/a?b=c",
@@ -602,7 +602,7 @@ mod tests {
         assert!(topic(Before::Text(&moved), &back, day(TODAY)).is_empty());
     }
 
-    const INDEX: &str = "## bench\n- [Board](board.md) — the bench board is the dev kit, link on interface 2\n\n## tooling\n- [Fmt](fmt.md) — never run the formatter on these repos\n";
+    const INDEX: &str = "## testing\n- [Soak](soak.md) — the soak test runs nightly on the lab machine\n\n## tooling\n- [Lint](lint.md) — run the lint script before every commit\n";
 
     #[test]
     fn a_clean_index_write_passes_and_legacy_lines_are_left_alone() {
@@ -615,7 +615,7 @@ mod tests {
 
     #[test]
     fn i1_i2_i4_on_touched_lines() {
-        let new = format!("- [Top](top.md) — above every header\n{INDEX}- [Board again](board.md) — {}\n", "y".repeat(160));
+        let new = format!("- [Top](top.md) — above every header\n{INDEX}- [Soak again](soak.md) — {}\n", "y".repeat(160));
         let f = index(Before::Text(INDEX), &new, None);
         assert_eq!(ids(&f), ["I2", "I1", "I4"]);
         assert_eq!(f[0].line, Some(1));
@@ -624,10 +624,10 @@ mod tests {
 
     #[test]
     fn i3_refuses_a_new_domain_and_names_the_known_ones() {
-        let new = format!("{INDEX}\n## fleet\n- [Leg](leg.md) — a leg dies after four tasks\n");
+        let new = format!("{INDEX}\n## release\n- [Freeze](freeze.md) — the release branch freezes a week before a tag\n");
         let f = index(Before::Text(INDEX), &new, None);
         assert_eq!(ids(&f), ["I3"]);
-        assert!(f[0].message.contains("use one of: bench · tooling"));
+        assert!(f[0].message.contains("use one of: testing · tooling"));
         // A standalone check has no before to compare.
         assert!(index(Before::Unknown, INDEX, None).is_empty());
     }
@@ -638,10 +638,10 @@ mod tests {
         assert!(index(Before::Absent, INDEX, None).is_empty());
         // An index written before domains existed: the write that adds them
         // and moves the lines under them goes through...
-        let legacy = "- [Board](board.md) — x\n- [Fmt](fmt.md) — y\n";
+        let legacy = "- [Soak](soak.md) — x\n- [Lint](lint.md) — y\n";
         assert!(index(Before::Text(legacy), INDEX, None).is_empty());
         // ...while touching a line and leaving it under no header is still I2.
-        let touched_only = "- [Board](board.md) — x, changed\n- [Fmt](fmt.md) — y\n";
+        let touched_only = "- [Soak](soak.md) — x, changed\n- [Lint](lint.md) — y\n";
         assert_eq!(ids(&index(Before::Text(legacy), touched_only, None)), ["I2"]);
         // Once there are headers, a new one is refused.
         let more = format!("{INDEX}## later\n");
@@ -652,11 +652,11 @@ mod tests {
     fn i5_warns_on_a_link_to_nothing() {
         let dir = std::env::temp_dir().join(format!("promptu-i5-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("board.md"), "x").unwrap();
+        std::fs::write(dir.join("soak.md"), "x").unwrap();
         let f = index(Before::Unknown, INDEX, Some(&dir));
         assert_eq!(ids(&f), ["I5"]);
         assert_eq!(f[0].severity, Severity::Warning);
-        assert_eq!(orphans(&dir, "## a\n- [Other](other.md) — x\n"), ["board.md"]);
+        assert_eq!(orphans(&dir, "## a\n- [Other](other.md) — x\n"), ["soak.md"]);
         assert!(orphans(&dir, INDEX).is_empty());
         std::fs::remove_dir_all(dir).unwrap();
     }

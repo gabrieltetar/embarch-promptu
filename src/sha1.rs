@@ -75,9 +75,9 @@ mod tests {
 
     #[test]
     fn a_memory_id_hashes_the_file_name_with_its_extension() {
-        // python3 -c "import hashlib; print(hashlib.sha1(b'flash-tool-trap.md').hexdigest()[:6])"
-        assert_eq!(memory_id("flash-tool-trap.md"), "5e5077");
+        // python3 -c "import hashlib; print(hashlib.sha1(b'cache-trap.md').hexdigest()[:6])"
+        assert_eq!(memory_id("cache-trap.md"), "de8cea");
         assert_eq!(memory_id("example.md"), "56b97e");
-        assert_ne!(memory_id("flash-tool-trap.md"), memory_id("flash-tool-trap"));
+        assert_ne!(memory_id("cache-trap.md"), memory_id("cache-trap"));
     }
 }

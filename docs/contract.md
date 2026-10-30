@@ -133,7 +133,7 @@ T1–T5 run on every write to a topic file, whatever it touches: a write brings 
 **Context** is one line of JSON on stdout, and nothing else:
 
 ```json
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"Promptu checked this write to the memory file flash-tool.md (warn mode): it goes ahead, but fix these with your next edit to it:\n- T2: add `kind:` at the top level of the frontmatter: preference · rule · trap · reference · status"}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"Promptu checked this write to the memory file lint-script.md (warn mode): it goes ahead, but fix these with your next edit to it:\n- T2: add `kind:` at the top level of the frontmatter: preference · rule · trap · reference · status"}}
 ```
 
 - `hookEventName` is the input's event (`PreToolUse`, or `PostToolUse` for O1); Claude Code rejects a mismatch [measured].
@@ -144,7 +144,7 @@ T1–T5 run on every write to a topic file, whatever it touches: a write brings 
 **Refusal** (block mode, any error): exit 2, stdout empty, stderr:
 
 ```
-Promptu refused this write to the memory file flash-tool.md. Fix these and write it again:
+Promptu refused this write to the memory file lint-script.md. Fix these and write it again:
 - T2: add `kind:` at the top level of the frontmatter: preference · rule · trap · reference · status
 Also worth fixing (not blocking):
 - T5: a trap memory takes `source:` when there is one — a repo path, an absolute path, a URL or a commit
@@ -202,7 +202,7 @@ Exit 1 when any error is found, 0 when there are none (warnings included), 2 whe
     { "path": "/home/u/.claude/projects/-home-u-work-app/memory/MEMORY.md", "role": "index",
       "findings": [ { "check": "I1", "severity": "error", "line": 1, "message": "this index line is 168 characters; the limit is 150 — keep the fact, cut the words" },
                     { "check": "O1", "severity": "warning", "message": "orphan.md is not linked from the index: delete it or give it an index line" } ] },
-    { "path": "/home/u/.claude/projects/-home-u-work-app/memory/flash-tool.md", "role": "topic", "findings": [] }
+    { "path": "/home/u/.claude/projects/-home-u-work-app/memory/lint-script.md", "role": "topic", "findings": [] }
   ],
   "errors": 1,
   "warnings": 1
@@ -231,14 +231,14 @@ The memory that loads in the current directory, for the memory menu (terminal no
   },
   "scopes": [
     { "id": "user",    "label": "User",        "files": ["/home/u/.claude/CLAUDE.md"], "domains": ["Response style", "Working rules"] },
-    { "id": "auto",    "label": "Auto memory", "files": ["…/memory/MEMORY.md", "…/memory/bench-board.md"], "domains": ["bench", "tooling"] },
+    { "id": "auto",    "label": "Auto memory", "files": ["…/memory/MEMORY.md", "…/memory/soak-test.md"], "domains": ["testing", "tooling"] },
     { "id": "project", "label": "Project",     "files": ["/home/u/work/app/CLAUDE.md"], "domains": ["Build", "Git"] }
   ],
   "entries": [
-    { "scope": "auto", "domain": "bench", "kind": "status", "type": "project", "id": "09a770",
-      "file": "…/memory/bench-board.md", "title": "Bench board",
-      "line": "- [Bench board](bench-board.md) — the bench runs a dev kit; its link is the higher serial interface",
-      "line_no": 3, "chars": 99, "modified": "2026-09-15", "age_days": 44,
+    { "scope": "auto", "domain": "testing", "kind": "status", "type": "project", "id": "08841b",
+      "file": "…/memory/soak-test.md", "title": "Soak test",
+      "line": "- [Soak test](soak-test.md) — the nightly soak test is paused until the climate chamber is back from calibration",
+      "line_no": 3, "chars": 112, "modified": "2026-09-15", "age_days": 44,
       "review_by": "2026-10-01", "source": [], "flags": ["review_by_past"], "stale": true, "used": [] }
   ],
   "counts": { "entries": 39, "stale": 5, "by_scope": {"auto": 32, "project": 7}, "by_kind": {"rule": 6, "trap": 12}, "by_flag": {"review_by_past": 1} },
@@ -291,7 +291,7 @@ qid      = 1*( %x61-7A / "_" )
 Fields appear in this order; one with nothing is left out. Example:
 
 ```
-— promptu bench-session@3 asked=board:other,attached:o1+o3,pass:rec,gate:rec filled=flash:memory.5e5077,unblocks:desk! skipped=timebox assume=heavy
+— promptu bench-session@3 asked=board:other,attached:o1+o3,pass:rec,gate:rec filled=flash:memory.de8cea,unblocks:desk! skipped=timebox assume=heavy
 ```
 
 ### 6.2 Meaning
@@ -300,7 +300,7 @@ Fields appear in this order; one with nothing is left out. Example:
 
 ### 6.3 Memory id
 
-**The first six lowercase hex digits of the SHA-1 of the topic file's name**: the name with its `.md`, no directory, as UTF-8. `flash-tool-trap.md` → `5e5077`; `example.md` → `56b97e`. A fill from a `CLAUDE.md` line is `memory.claude-md`, attributed to the file, not the line. An id is unique only within one project's memory folder; two topic files in one folder share an id with probability about n² / 33.5 million (about 1 in 33,000 at 32 files) ([forks](forks.md) F10).
+**The first six lowercase hex digits of the SHA-1 of the topic file's name**: the name with its `.md`, no directory, as UTF-8. `cache-trap.md` → `de8cea`; `example.md` → `56b97e`. A fill from a `CLAUDE.md` line is `memory.claude-md`, attributed to the file, not the line. An id is unique only within one project's memory folder; two topic files in one folder share an id with probability about n² / 33.5 million (about 1 in 33,000 at 32 files) ([forks](forks.md) F10).
 
 ## 7. `promptu prep` (sketch; build step 2)
 
@@ -317,7 +317,7 @@ Gathers (no model), runs the one Sonnet pass, guards its fills, and plans the pa
   "pattern": { "id": "bench-session", "version": 3, "picked_by": "model", "confidence": 0.84, "alt": ["debug-failure"] },
   "offline": false,
   "flags": { "firmware": true, "hardware": true, "item": true },
-  "filled": [ { "q": "flash", "value": "<the option's value>", "source": "memory", "entry": "5e5077", "evidence": "<quote found in the source>" } ],
+  "filled": [ { "q": "flash", "value": "<the option's value>", "source": "memory", "entry": "de8cea", "evidence": "<quote found in the source>" } ],
   "pages": [ { "ids": ["board", "attached", "pass", "_rest"],
                "questions": [ { "question": "Which board is on the bench?", "header": "Board", "multiSelect": false,
                                 "options": [ { "label": "Same as last time (Recommended)", "description": "…" }, { "label": "…", "description": "…" } ] } ] } ]
