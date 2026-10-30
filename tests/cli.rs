@@ -512,14 +512,16 @@ fn where_it_is_used_comes_from_this_projects_footers_of_the_last_30_days() {
     let soak = entry(&inv, "soak-test.md")["id"].as_str().unwrap().to_string();
 
     let sent = |n: &str, fill: &str| format!("## Goal\nrough words\n\n— promptu bench-session@{n} asked=board:other filled={fill}");
-    let rendered = format!("{{\n  \"footer\": \"— promptu debug-failure@1 filled=first:memory.{clamp}!\",\n  \"prompt\": \"x\"\n}}");
+    let rendered = format!("{{\n  \"footer\": \"— promptu research-explain@1 filled=use:memory.{soak}\",\n  \"prompt\": \"x\"\n}}");
     let lines = [
         // Sent from the chat: two fills, one of them the global CLAUDE.md.
         record("user", &repo.join("src"), "2026-10-20T10:00:00Z", json!(sent("1", &format!("flash:memory.{clamp},gate:memory.claude-md"))), json!({})),
         // The same footer again in this transcript: counted once.
         record("user", &repo, "2026-10-21T10:00:00Z", json!(sent("1", &format!("flash:memory.{clamp},gate:memory.claude-md"))), json!({})),
-        // The terminal skill's route: render's JSON as a tool result.
-        record("user", &repo, "2026-10-25T09:00:00Z", json!([{"type": "tool_result", "tool_use_id": "t1", "content": rendered}]), json!({})),
+        // A fill the owner changed (`!`), sent as blocks.
+        record("user", &repo, "2026-10-25T09:00:00Z", json!([{"type": "text", "text": format!("## Goal\nx\n\n— promptu debug-failure@1 filled=first:memory.{clamp}!")}]), json!({})),
+        // Render's JSON in a tool result, the terminal skill's: shown, never sent, so no use (P3).
+        record("user", &repo, "2026-10-26T09:00:00Z", json!([{"type": "tool_result", "tool_use_id": "t1", "content": rendered}]), json!({})),
         // Too old, a meta line, a sidechain, another project, Claude's own text: none count.
         record("user", &repo, "2026-09-20T10:00:00Z", json!(sent("2", &format!("flash:memory.{soak}"))), json!({})),
         record("user", &repo, "2026-10-22T10:00:00Z", json!(sent("3", &format!("flash:memory.{soak}"))), json!({"isMeta": true})),

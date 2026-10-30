@@ -1,13 +1,14 @@
 //! "Where it's used" (docs/contract.md §5 `used`): the footers of the last
 //! 30 days that name a memory entry, read from Claude Code's transcripts.
 //!
-//! A run is counted where its footer reaches a transcript of this project:
-//! the owner's own message that carries it (the chat puts the rendered
-//! prompt in the draft and he sends it), or the JSON `promptu render`
-//! printed as a tool result (the terminal skill's route, where the prompt is
-//! shown, not sent). One footer counts once per transcript. Only the
-//! session's own `cwd` decides the project: a transcript whose folder no
-//! longer exists counts when that folder was the main checkout or under it.
+//! A run is counted where its footer reaches a transcript of this project in
+//! a prompt the owner sent: his own message that carries it (the chat puts
+//! the rendered prompt in the draft and he sends it). A prompt only shown —
+//! `promptu render`'s output in a tool result, the terminal skill's — is not
+//! a use (the owner's pick, forks.md P3, decision 33). One footer counts
+//! once per transcript. Only the session's own `cwd` decides the project: a
+//! transcript whose folder no longer exists counts when that folder was the
+//! main checkout or under it.
 
 use crate::claude;
 use crate::footer::{self, LEAD};
@@ -80,7 +81,7 @@ fn texts(content: &Value) -> Vec<&str> {
     }
 }
 
-/// The footers a record carries, by the two routes the module comment names.
+/// The footers a prompt the owner sent carries.
 fn footers(v: &Value) -> Vec<String> {
     let mut out = vec![];
     if v.get("isSidechain").and_then(Value::as_bool) == Some(true) {
@@ -93,33 +94,6 @@ fn footers(v: &Value) -> Vec<String> {
     if owners {
         for t in texts(content) {
             out.extend(t.lines().map(str::trim_end).filter(|l| l.starts_with(LEAD)).map(str::to_string));
-        }
-    }
-    if let Value::Array(blocks) = content {
-        for b in blocks.iter().filter(|b| b.get("type").and_then(Value::as_str) == Some("tool_result")) {
-            for t in texts(&b["content"]) {
-                out.extend(render_footers(t));
-            }
-        }
-    }
-    out
-}
-
-/// The `"footer": "— promptu …"` fields of `promptu render`'s JSON in a
-/// tool's output. A footer holds no quote or backslash (contract §6.1).
-fn render_footers(text: &str) -> Vec<String> {
-    let mut out = vec![];
-    let mut rest = text;
-    while let Some(i) = rest.find("\"footer\"") {
-        rest = &rest[i + "\"footer\"".len()..];
-        let after = rest.trim_start();
-        let Some(after) = after.strip_prefix(':') else { continue };
-        let Some(s) = after.trim_start().strip_prefix('"') else { continue };
-        if !s.starts_with(LEAD) {
-            continue;
-        }
-        if let Some(end) = s.find(['"', '\\']) {
-            out.push(s[..end].trim_end().to_string());
         }
     }
     out
@@ -198,7 +172,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn a_footer_comes_from_the_owners_message_or_from_renders_json() {
+    fn a_footer_comes_from_a_prompt_the_owner_sent_only() {
         let user = json!({"type": "user", "message": {"role": "user", "content": "## Goal\nfix it\n\n— promptu debug-failure@1 filled=symptom:memory.de8cea"}});
         assert_eq!(footers(&user), vec!["— promptu debug-failure@1 filled=symptom:memory.de8cea"]);
         let blocks = json!({"type": "user", "message": {"content": [{"type": "text", "text": "x\n— promptu none"}]}});
@@ -211,7 +185,7 @@ mod tests {
         assert!(footers(&cli).is_empty());
         let rendered = "{\n  \"footer\": \"— promptu handoff@1 asked=reader:rec filled=save_to:memory.claude-md\",\n  \"prompt\": \"## Goal\\nx\\n\\n— promptu handoff@1 asked=reader:rec filled=save_to:memory.claude-md\"\n}";
         let tool = json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": rendered}]}});
-        assert_eq!(footers(&tool), vec!["— promptu handoff@1 asked=reader:rec filled=save_to:memory.claude-md"]);
+        assert!(footers(&tool).is_empty(), "render's output, shown and not sent, is no use (P3)");
         // Shown in a reply, it is Claude's text, not a use.
         let reply = json!({"type": "assistant", "message": {"content": [{"type": "text", "text": "— promptu none"}]}});
         assert!(footers(&reply).is_empty());
