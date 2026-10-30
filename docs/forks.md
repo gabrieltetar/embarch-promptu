@@ -34,15 +34,15 @@ The design names the plugin `embarch-promptu@embarch`. The `embarch` marketplace
 
 **Recommendation: (a)** now; (d) when a third suite plugin appears.
 
-### F4. I3 on a brand-new index
+### F4. I3 on a brand-new index — decided
 
-I3 refuses a `## ` header the index did not have. A project with no `MEMORY.md` yet has no headers, so in block mode Claude's first index is refused whatever it writes: a header trips I3, a line without one trips I2.
+**Decided by the owner, 2026-10-29: (b), extended to an existing index with no headers yet.** Built: I3 applies only once the index has a header.
 
-- (a) As designed: refuse; Claude asks the owner for the project's domains — *provisional default* (in warn mode it is one line of advice).
-- (b) Headers are free when the index is created, and checked from then on.
+I3 refuses a `## ` header the index did not have. A project with no `MEMORY.md` yet has no headers, so in block mode Claude's first index was refused whatever it wrote: a header tripped I3, a line without one tripped I2. An index written before domains existed had the same deadlock.
+
+- (a) As designed: refuse; Claude asks the owner for the project's domains.
+- **(b) Headers are free when the index is created, and checked from then on.**
 - (c) Seed new indexes from a per-machine default domain list in `config.toml`.
-
-**Recommendation: (b).** "Add a header only when I ask" guards an existing list against drift; a new project has no list to drift from, and (a) stalls a background agent on its first memory.
 
 ### F5. Writes the hook cannot see
 

@@ -115,7 +115,7 @@ Check ids are permanent: a check is never renumbered, and a new one takes a new 
 | T7 | topic | A field in Before's frontmatter is missing from After's, the level ignored. `node_type`, `originSessionId` and `modified` are exempt: Claude Code stamps them on every write. | error |
 | I1 | index | A touched index line is over 150 characters. | error |
 | I2 | index | A touched index line has no `## ` header above it. | error |
-| I3 | index | After has a `## ` header Before does not. A new index has no known headers, so all of its headers count ([forks](forks.md) F4). | error |
+| I3 | index | After has a `## ` header Before does not, **once Before has at least one**. A new index, or one with no headers yet, may add them freely (the owner's answer to [forks](forks.md) F4). | error |
 | I4 | index | A touched index line links a file another index line also links. | error |
 | I5 | index | A touched index line links a file not in the memory folder (URLs and `#` anchors skipped). | warning |
 | O1 | index, PostToolUse | A topic file in the folder is linked from no index line. | warning |

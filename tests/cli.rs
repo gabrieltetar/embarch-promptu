@@ -248,6 +248,28 @@ fn an_index_write_is_checked_on_the_lines_it_touches_only() {
 }
 
 #[test]
+fn block_mode_can_create_a_new_index_and_give_a_legacy_one_its_domains() {
+    let s = Scratch::new("headers");
+    let repo = s.repo("app");
+    let dir = s.memdir(&repo);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("soak.md"), "").unwrap();
+    s.mode("block");
+    let idx = dir.join("MEMORY.md");
+    let with_headers = "## testing\n- [Soak](soak.md) — the soak runs nightly\n";
+    // A new index: its headers are free.
+    silent(&s.hook(&pre("Write", &idx, json!({ "content": with_headers }))));
+    // An index with no headers yet: the write that adds them goes through...
+    std::fs::write(&idx, "- [Soak](soak.md) — the soak runs nightly\n").unwrap();
+    silent(&s.hook(&pre("Write", &idx, json!({ "content": with_headers }))));
+    // ...and once it has them, a new one is refused.
+    std::fs::write(&idx, with_headers).unwrap();
+    let o = s.hook(&pre("Edit", &idx, json!({ "old_string": "## testing\n", "new_string": "## testing\n\n## other\n" })));
+    assert_eq!(o.status.code(), Some(2));
+    assert!(stderr(&o).contains("I3") && stderr(&o).contains("use one of: testing"), "{}", stderr(&o));
+}
+
+#[test]
 fn post_tool_use_on_the_index_names_the_orphans() {
     let s = Scratch::new("post");
     let dir = s.seed(&s.repo("app"));

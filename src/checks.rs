@@ -340,17 +340,23 @@ pub fn index(before: Before, after: &str, dir: Option<&Path>) -> Vec<Finding> {
     let all = lines(after);
     let mask = touched(before, after);
     let (in_section, headers) = sections(after);
-    let old_headers: Option<Vec<String>> = match before {
-        Before::Unknown => None,
-        Before::Absent => Some(vec![]),
-        Before::Text(old) => Some(sections(old).1.into_iter().map(|(_, h)| h).collect()),
+    // I3 compares with the headers the index already had. Headers are free
+    // while it has none — a new index, or one written before domains
+    // existed — and checked from then on (decision 21): otherwise block mode
+    // could never create or repair a header-less index, since I2 wants every
+    // touched line under a header.
+    let old_headers: Vec<String> = match before {
+        Before::Text(old) => sections(old).1.into_iter().map(|(_, h)| h).collect(),
+        Before::Unknown | Before::Absent => vec![],
     };
-
-    if let Some(old) = &old_headers {
-        let known = if old.is_empty() { "there are none yet".to_string() } else { format!("use one of: {}", old.join(" · ")) };
+    if !old_headers.is_empty() {
         for (i, h) in &headers {
-            if !old.contains(h) {
-                out.push(err("I3", Some(i + 1), format!("new domain `{h}`: domains are added by the owner, not by a tool write; {known}")));
+            if !old_headers.contains(h) {
+                out.push(err(
+                    "I3",
+                    Some(i + 1),
+                    format!("new domain `{h}`: domains are added by the owner, not by a tool write; use one of: {}", old_headers.join(" · ")),
+                ));
             }
         }
     }
@@ -601,12 +607,24 @@ mod tests {
         let f = index(Before::Text(INDEX), &new, None);
         assert_eq!(ids(&f), ["I3"]);
         assert!(f[0].message.contains("use one of: bench · tooling"));
-        // A new index with headers: none are known yet.
-        let f = index(Before::Absent, INDEX, None);
-        assert_eq!(ids(&f), ["I3", "I3"]);
-        assert!(f[0].message.contains("none yet"));
         // A standalone check has no before to compare.
         assert!(index(Before::Unknown, INDEX, None).is_empty());
+    }
+
+    #[test]
+    fn headers_are_free_until_the_index_has_some() {
+        // Creating the index: its headers are the first domains.
+        assert!(index(Before::Absent, INDEX, None).is_empty());
+        // An index written before domains existed: the write that adds them
+        // and moves the lines under them goes through...
+        let legacy = "- [Board](board.md) — x\n- [Fmt](fmt.md) — y\n";
+        assert!(index(Before::Text(legacy), INDEX, None).is_empty());
+        // ...while touching a line and leaving it under no header is still I2.
+        let touched_only = "- [Board](board.md) — x, changed\n- [Fmt](fmt.md) — y\n";
+        assert_eq!(ids(&index(Before::Text(legacy), touched_only, None)), ["I2"]);
+        // Once there are headers, a new one is refused.
+        let more = format!("{INDEX}## later\n");
+        assert_eq!(ids(&index(Before::Text(INDEX), &more, None)), ["I3"]);
     }
 
     #[test]
