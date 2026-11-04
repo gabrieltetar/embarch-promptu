@@ -366,6 +366,53 @@ fn a_bench_run_from_prep_to_render() {
 }
 
 #[test]
+fn render_does_not_wait_on_a_silent_open_stdin() {
+    // A caller that sends nothing but keeps stdin open, as a shell can pass on: this used to hang forever.
+    let s = Scratch::new("open-stdin");
+    let repo = s.repo("motor-fw", "main");
+    s.reply(bench_reply());
+    let out = s.json(&repo, &["prep"], BENCH_ASK);
+    let run = out["run"].as_str().unwrap();
+    let mut c = s.cmd(&repo, &["render", run, "--rest", "assume"]);
+    c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = c.spawn().unwrap();
+    let held_open = child.stdin.take().unwrap();
+    let started = std::time::Instant::now();
+    while child.try_wait().unwrap().is_none() {
+        if started.elapsed() > std::time::Duration::from_secs(30) {
+            child.kill().unwrap();
+            panic!("render still waiting on stdin after 30 s");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let o = child.wait_with_output().unwrap();
+    drop(held_open);
+    let stderr = String::from_utf8_lossy(&o.stderr);
+    assert_eq!(o.status.code(), Some(0), "stderr {stderr}");
+    assert!(stderr.contains("nothing on stdin"), "{stderr}");
+    let r: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert!(r["prompt"].as_str().unwrap().starts_with("## Goal"), "{r:#}");
+}
+
+#[test]
+fn input_that_starts_late_is_still_read() {
+    // Bad JSON answers before the run is looked up, so an exit 2 naming it proves the bytes were read.
+    let s = Scratch::new("late-stdin");
+    let repo = s.repo("motor-fw", "main");
+    let mut c = s.cmd(&repo, &["render", "no-such-run"]);
+    c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = c.spawn().unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    stdin.write_all(b"not json").unwrap();
+    drop(stdin);
+    let o = child.wait_with_output().unwrap();
+    let stderr = String::from_utf8_lossy(&o.stderr);
+    assert_eq!(o.status.code(), Some(2), "stderr {stderr}");
+    assert!(stderr.contains("stdin is not JSON"), "{stderr}");
+}
+
+#[test]
 fn take_the_rest_as_recommended_and_esc() {
     let s = Scratch::new("rest");
     let repo = s.repo("motor-fw", "main");

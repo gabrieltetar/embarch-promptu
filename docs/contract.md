@@ -498,7 +498,7 @@ The task patterns the set carries (§7.1: the binary's own, or `PROMPTU_PATTERNS
 
 ### 8.1 Input
 
-Both read the same JSON on stdin (empty means `{}`):
+Both read the same JSON on stdin (empty means `{}`). The input is optional, so neither waits on a caller that sends nothing: a terminal counts as empty, and any other stdin has 2 seconds [chosen] to send its first byte or close, after which the command says so on stderr and goes on with `{}`. Input that has started is read to end of file.
 
 ```json
 { "pattern": "debug-failure",

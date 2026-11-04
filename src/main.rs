@@ -187,9 +187,44 @@ fn read_stdin() -> String {
     s
 }
 
+/// How long `next` and `render` wait for their optional input to start.
+const INPUT_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Optional input on stdin, or empty if none comes.
+///
+/// Reading to end of file never returns when a caller sends nothing but leaves
+/// stdin open: a terminal, or a socket or pipe it inherited. So a terminal
+/// counts as no input, and anything else has `wait` to send its first byte or
+/// close. Once a byte arrives the read runs to end of file. A thread still
+/// blocked on a silent stdin ends with the process.
+fn read_optional_stdin(wait: std::time::Duration) -> String {
+    use std::io::{IsTerminal, Read};
+    if std::io::stdin().is_terminal() {
+        return String::new();
+    }
+    let (started_tx, started) = std::sync::mpsc::channel();
+    let (done_tx, done) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut stdin = std::io::stdin().lock();
+        let mut chunk = [0u8; 4096];
+        let n = stdin.read(&mut chunk).unwrap_or(0);
+        let _ = started_tx.send(());
+        let mut input = chunk[..n].to_vec();
+        if n > 0 {
+            let _ = stdin.read_to_end(&mut input);
+        }
+        let _ = done_tx.send(String::from_utf8(input).unwrap_or_default());
+    });
+    if started.recv_timeout(wait).is_err() {
+        eprintln!("promptu: nothing on stdin after {}s; going on without input", wait.as_secs());
+        return String::new();
+    }
+    done.recv().unwrap_or_default()
+}
+
 /// A command's JSON input on stdin; empty means `{}`.
 fn stdin_json() -> Result<serde_json::Value, prep::Fail> {
-    let s = read_stdin();
+    let s = read_optional_stdin(INPUT_WAIT);
     if s.trim().is_empty() {
         return Ok(serde_json::json!({}));
     }
