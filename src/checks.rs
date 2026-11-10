@@ -390,8 +390,12 @@ pub fn index(before: Before, after: &str, dir: Option<&Path>) -> Vec<Finding> {
             out.push(err("I1", Some(i + 1), format!("this index line is {n} characters; the limit is {INDEX_MAX} — keep the fact, cut the words")));
         }
         if in_section[i].is_none() {
-            let hint = if domains.is_empty() { String::new() } else { format!(": {}", domains.join(" · ")) };
-            out.push(err("I2", Some(i + 1), format!("put this index line under the `## <domain>` header it belongs to{hint}")));
+            let msg = if domains.is_empty() {
+                "this index has no `## <domain>` header yet, so you may add the first one in this same write: put a `## <domain>` line above this index line".to_string()
+            } else {
+                format!("put this index line under the `## <domain>` header it belongs to: {}", domains.join(" · "))
+            };
+            out.push(err("I2", Some(i + 1), msg));
         }
         let Some(t) = link_target(l) else { continue };
         if let Some(others) = targets.get(&t) {
@@ -653,6 +657,9 @@ mod tests {
         // ...while touching a line and leaving it under no header is still I2.
         let touched_only = "- [Soak](soak.md) — x, changed\n- [Lint](lint.md) — y\n";
         assert_eq!(ids(&index(Before::Text(legacy), touched_only, None)), ["I2"]);
+        // The message for a header-less index says a first header may be added.
+        let f = index(Before::Text(legacy), touched_only, None);
+        assert!(f[0].message.contains("you may add the first one in this same write"), "{f:?}");
         // Once there are headers, a new one is refused.
         let more = format!("{INDEX}## later\n");
         assert_eq!(ids(&index(Before::Text(INDEX), &more, None)), ["I3"]);
