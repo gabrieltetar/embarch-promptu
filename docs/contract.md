@@ -280,6 +280,7 @@ run      = pattern "@" version [ " asked=" ask *( "," ask ) ]
                                [ " skipped=" qid *( "," qid ) ]
                                [ " assume=" qid *( "," qid ) ]
                                [ " pick=owner" ]
+                               [ " mode=brief" ] [ " way=" way ]
 pattern  = 1*64( %x61-7A / DIGIT / "-" )          ; a pattern's name
 version  = 1*DIGIT                                ; its `version`
 ask      = qid ":" ( "rec" / "all" / choice *( "+" choice ) )
@@ -288,6 +289,7 @@ fill     = qid ":" source [ "!" ]                 ; "!": the owner changed the f
 source   = "prompt" / "desk" / "last" / "context" / "memory." mem
 mem      = 6( DIGIT / %x61-66 ) / "claude-md"
 qid      = 1*( %x61-7A / "_" )
+way      = "workers" / "handoff" / "compactions" / "decimation"
 ```
 
 Fields appear in this order; one with nothing is left out. Example:
@@ -298,7 +300,7 @@ Fields appear in this order; one with nothing is left out. Example:
 
 ### 6.2 Meaning
 
-`asked`: questions put to the owner and what he took (`rec` the recommendation, `all` taken by "accept all", `oN` the Nth option, `other` free text). For a `text` question, `rec` is the first option shown (its prompt pre-selection or the pass's first candidate), `oN` counts its static options, then its fallback options (`leave-out`/`not-sure`: the question's own fallback is o(K+1), the other o(K+2), K static options), and another candidate is `other`. `meaning` is the generated ambiguity question (§7.8), `oN` the Nth meaning. `filled`: questions answered without asking, by source. `skipped`: neither asked nor filled; the default was used. `assume`: left open by Esc, rendered as assumptions Claude must state. `pick=owner`: he switched pattern. `mode=brief`, after `pick`: the prompt was a pasted brief, checked for its gaps only (decision 24); `skipped` is then absent, as a brief takes no defaults. `none`: Promptu ran and no pattern was used. A reader takes the last line of a prompt that starts with `— promptu `, ignores fields it does not know, and treats a deleted footer as no run.
+`asked`: questions put to the owner and what he took (`rec` the recommendation, `all` taken by "accept all", `oN` the Nth option, `other` free text). For a `text` question, `rec` is the first option shown (its prompt pre-selection or the pass's first candidate), `oN` counts its static options, then its fallback options (`leave-out`/`not-sure`: the question's own fallback is o(K+1), the other o(K+2), K static options), and another candidate is `other`. `meaning` is the generated ambiguity question (§7.8), `oN` the Nth meaning. `filled`: questions answered without asking, by source. `skipped`: neither asked nor filled; the default was used. `assume`: left open by Esc, rendered as assumptions Claude must state. `pick=owner`: he switched pattern. `mode=brief`, after `pick`: the prompt was a pasted brief, checked for its gaps only (decision 24); `skipped` is then absent, as a brief takes no defaults. `way=<name>`, after `mode`: the pass judged the work would outgrow one context window and named that way in Who does it (§7.10). `none`: Promptu ran and no pattern was used. A reader takes the last line of a prompt that starts with `— promptu `, ignores fields it does not know, and treats a deleted footer as no run.
 
 ### 6.3 Memory id
 
@@ -363,7 +365,7 @@ claude -p --model <pass_model> --effort <pass_effort> --no-session-persistence -
 with `EMBARCH_DESK_INTERNAL=1`, `PROMPTU_INTERNAL=1` and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` in its environment (the last drops a side call Claude Code makes on every `-p`, $0.0033 a run, and leaves caching alone [measured 2026-10-29, 2.1.287]). `PROMPTU_CLAUDE` replaces the `claude` binary (tests use a fake). **Thinking cannot be turned off** on Claude Sonnet 5.5 through 2.1.287: `--max-thinking-tokens 0` still returns a thinking block [measured]. `--effort` is the only control, so it is the setting (decision 22).
 
 - **System prompt**: `src/pass_system.md`, a blank line, then the catalogue generated from the set as it shows with the run's EmbArch parts (hidden questions and options are left out, so the model never sees a hidden label; one cached prompt per combination of parts): per task pattern its `## <name>`, its description, `Typical phrases:`, `Example prompts:`, and one line per question (`- `<id>` (<type>; required; always_ask; suggest N; when …; sources …): <ask> Options: <label> (<description>) | …`). It changes only with the patterns, so the prompt cache holds it.
-- **Message**: six tagged blocks, each `(none)` when empty: `<prompt>` (verbatim), `<context>` (`repo:`, `branch:`, `linked worktree:`, `firmware:` lines), `<desk>`, `<memory>` (the project's `MEMORY.md`: `## ` headers, and each index line prefixed `[<memory id>] `; then `## standing rules` and the global `CLAUDE.md` bullets prefixed `[claude-md] `, from the sections `memory_claude_md_sections` names, every section by default; 12,000 characters at most, the index first), `<last>` (`<pattern>.<qid>: <answer>` for each question that takes `last`), and `<regex_hint>` (`<pattern> <score>, …`).
+- **Message**: six tagged blocks, each `(none)` when empty (a seventh, `<context_usage>`, is present only when the run was given the chat's context usage, §7.10): `<prompt>` (verbatim), `<context>` (`repo:`, `branch:`, `linked worktree:`, `firmware:` lines), `<desk>`, `<memory>` (the project's `MEMORY.md`: `## ` headers, and each index line prefixed `[<memory id>] `; then `## standing rules` and the global `CLAUDE.md` bullets prefixed `[claude-md] `, from the sections `memory_claude_md_sections` names, every section by default; 12,000 characters at most, the index first), `<last>` (`<pattern>.<qid>: <answer>` for each question that takes `last`), and `<regex_hint>` (`<pattern> <score>, …`).
 - **Reply**: one JSON object, `pattern` first:
 
   ```json
@@ -372,8 +374,11 @@ with `EMBARCH_DESK_INTERNAL=1`, `PROMPTU_INTERNAL=1` and `CLAUDE_CODE_DISABLE_NO
    "filled": {"flash": {"value": "EmbArch", "source": "memory", "entry": "de8cea", "evidence": "flash through EmbArch only"}},
    "candidates": {"board": ["Stepper driver rev C, unit 2"]},
    "relevant": {"timebox": false, "unblocks": true},
-   "ambiguous": [{"phrase": "the rail", "meanings": ["the 5 V rail", "the 12 V rail"]}]}
+   "ambiguous": [{"phrase": "the rail", "meanings": ["the 5 V rail", "the 12 V rail"]}],
+   "way": null}
   ```
+
+  `way` is `null` for a small task, else `{"name": "workers", "how": "…", "why": "…"}` (§7.10).
 
 - **Falls back to the keyword pick, nothing filled, `offline: true`**, with the reason, when the binary cannot run, the run passes `pass_timeout_s` (15 s; the child is killed), the reply is an error or holds no JSON object, or `--offline` is given.
 
@@ -386,7 +391,7 @@ A fill stands only when all of these hold; otherwise it is listed in `dropped` w
 3. The evidence is at least three words or twelve characters, and, case-, quote-, dash- and whitespace-folded, is found in the source's text on word boundaries (a quote that starts or ends with a letter or digit may not start or end inside a word). A `memory` fill is checked against its `entry`'s line; with no `entry`, the one memory line holding the quote names it.
 4. The value fits the type: a label (`choice`), labels (`multi`), non-empty text (`text`), a bool or label (`bool`), counting only the options that show with the run's parts. A `text` value equal to a hidden option's label (any case) is refused, and a fill is only ever matched to an option that shows. A memory entry is six lowercase hex digits or `claude-md`.
 
-Also: a pattern outside the set means no pick; `alt` keeps at most two known patterns; candidates go to `text` questions only, at most their `suggest`; `relevant` counts only optional questions; an `ambiguous` phrase must occur in the prompt and carry 2–3 meanings.
+Also: a pattern outside the set means no pick; `way` is kept only with a pick, a `name` of the four in §7.10 and a non-empty `how` and `why` (whitespace folded to one line), else dropped; `alt` keeps at most two known patterns; candidates go to `text` questions only, at most their `suggest`; `relevant` counts only optional questions; an `ambiguous` phrase must occur in the prompt and carry 2–3 meanings.
 
 ### 7.5 State
 
@@ -441,7 +446,7 @@ Checks pattern files without a model. No path: the set this binary carries (or `
 | `size` (warning) | More than 12 questions: speed, not a cap. |
 | `signals` (warning) | An example's keyword pre-pick puts another pattern above its own. |
 
-### 7.8 `promptu prep [--have <parts|none>] [--pattern <id>|none] [--rec] [--desk <file>] [--offline] [--start]`
+### 7.8 `promptu prep [--have <parts|none>] [--pattern <id>|none] [--rec] [--desk <file>] [--offline] [--start] [--context-usage <percent>]`
 
 The rough prompt on stdin. Gathers (no model), runs the pass (§7.3), guards it (§7.4), plans the questions, saves the run, prints:
 
@@ -481,6 +486,15 @@ The rough prompt on stdin. Gathers (no model), runs the pass (§7.3), guards it 
 - **`pages`**: each is one AskUserQuestion call, in its own input shape. At most 4 questions. When an optional question would be left after a page, the page holds 3 plus the `_rest` control (header `Rest`: "Keep going" recommended, or "Take the rest as recommended"); otherwise it holds up to 4. **The Rest control skips optional questions only**: they take their recommendation (`all`), while required and always-asked questions are still asked on the pages after it. Its description lists what the optional ones take and names those still asked. An ambiguous phrase adds `_meaning` (header `Meaning`) first. A question whose `when` tests an answer still to be given waits for a later page; pages after the first are a forecast, re-planned by `next`.
 - **Options shown**: the recommended one(s) first, marked " (Recommended)"; for a `text` question, its prompt pre-selection, then the pass's candidates, then its static options, then a fallback while fewer than two; at most 4; labels cut to 80 characters. Claude Code adds "Other" itself.
 - **Exit**: 0 with JSON (offline and every warning included); 2 with a message on stderr for no prompt or an unknown `--pattern`; 3 on an internal error (§0). `next` exits 1 when it cannot save the run.
+
+### 7.10 Planning for high context: `--context-usage` and `way` (decision 41)
+
+Before rendering, the pass judges whether the work will outgrow one context window. No code sizes the task: the pass reads the prompt, the desk item, the memory and, when given, the context usage.
+
+- **Input: `prep --context-usage <percent>`**, a whole number 0 to 100: how full the chat's context window already is. **This is the one input `embarch-chat`'s `beginPromptu` passes.** It reaches the pass as a `<context_usage>` block (`62%`) and is saved in the run as `context_usage`. Without it (Start work, the terminal, any caller that does not know) the block is absent and the pass judges from the text alone; a value over 100 exits 2. It is a hint for the judgment, not a threshold in code: the pass's instructions start from `embarch-chat` decision 36's (compact above about 60 %, hand off above about 80 % or for unrelated work, background workers for a long self-contained job).
+- **Output: `way`** in the pass's reply (§7.3), kept by the guard (§7.4) and printed by `prep` and `next` as the run's `way` (`null` or `{name, how, why}`). `name` is one of `workers` (parallel background workers, the `delegate-agents` shape), `handoff` (stop at a named boundary and hand off with `embarch-chat`'s `handoff` tool), `compactions` (compact at named points, each with a focus) or `decimation` (split into tasks of one session each, in order).
+- **Rendered** as one line added to `## Who does it`, after what the pattern put there (a pasted brief takes it there too, in its added sections): `- Context plan, <way>: <how> Why: <why>`. A small task, with `way` null, gets nothing. The Goal stays verbatim (decision 9).
+- **Footer**: `way=<name>`, in the extra fields after `pick` and `mode` (§6.1), only when a way is picked: `— promptu implement-issue@1 asked=… way=handoff`. A reader that does not know it ignores it.
 
 ### 7.9 `promptu patterns [--json] [--have <parts|none>]` (build step 3)
 

@@ -146,6 +146,12 @@ pub struct Run {
     pub offline_reason: Option<String>,
     /// A pasted, already-structured brief: checked for gaps (decision 24).
     pub brief: bool,
+    /// The chat's context usage in whole percent, when it was given (contract §7.10).
+    #[serde(default)]
+    pub context_usage: Option<u32>,
+    /// The way the pass picked for high-context work (decision 41).
+    #[serde(default)]
+    pub way: Option<crate::pass::Way>,
     pub flags: Flags,
     pub ctx: Ctx,
     #[serde(default)]
@@ -1160,10 +1166,14 @@ pub fn render(run: &Run, set: &Set, config: &serde_json::Map<String, Value>) -> 
         _ => None,
     };
     let assume_line = (!assumed.is_empty()).then(|| format!("- {ASSUME_LEAD} {}", assumed.iter().map(|q| q.ask.as_str()).collect::<Vec<_>>().join(" ")));
+    let way_line = run.way.as_ref().map(|w| w.line());
+    if let Some(w) = &run.way {
+        f.extra.push(("way".into(), w.name.clone()));
+    }
     let sections: Vec<String>;
     let text = if run.brief {
         // The brief stays verbatim: everything Promptu adds goes after it.
-        f.extra.push(("mode".into(), "brief".into()));
+        f.extra.insert(0, ("mode".into(), "brief".into()));
         let mut push = |sec: &str, line: String| match added.iter_mut().find(|(s, _)| s == sec) {
             Some((_, l)) => l.push(line),
             None => added.push((sec.to_string(), vec![line])),
@@ -1173,6 +1183,9 @@ pub fn render(run: &Run, set: &Set, config: &serde_json::Map<String, Value>) -> 
         }
         if let Some(l) = assume_line {
             push("Constraints", l);
+        }
+        if let Some(l) = way_line {
+            push("Who does it", l);
         }
         added.sort_by_key(|(s, _)| SECTIONS.iter().position(|x| x == s).unwrap_or(SECTIONS.len()));
         let mut t = run.prompt.trim_end().to_string();
@@ -1193,6 +1206,9 @@ pub fn render(run: &Run, set: &Set, config: &serde_json::Map<String, Value>) -> 
         }
         if let Some(l) = assume_line {
             t = add_to_section(&t, "Constraints", &l);
+        }
+        if let Some(l) = way_line {
+            t = add_to_section(&t, "Who does it", &l);
         }
         sections = t.lines().filter_map(|l| l.strip_prefix("## ")).map(|s| s.trim().to_string()).collect();
         t.replace(ASK_MARK, &run.prompt)
@@ -1254,6 +1270,8 @@ pub fn example_run(set: &Set, p: &Pattern, i: usize, today: &str, parts: &[Strin
         offline: false,
         offline_reason: None,
         brief: false,
+        context_usage: None,
+        way: None,
         flags: Flags { firmware: get_b("firmware"), hardware: get_b("hardware"), item: item.is_some() },
         ctx: Ctx { repo: get_s("repo"), branch: get_s("branch"), worktree: get_s("worktree"), item, today: today.to_string() },
         fills: BTreeMap::new(),

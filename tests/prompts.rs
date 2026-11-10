@@ -1015,3 +1015,74 @@ fn the_skills_prep_line_uses_real_flags() {
     }
     assert!(skill.contains("argument-hint: \"[--item <wNN>] [pattern=<id>] [--rec] <rough prompt>\""));
 }
+
+/// The way a rough prompt for high-context work names, one golden per way and
+/// one for the small task (`tests/golden-way/<name>.md`; `PROMPTU_BLESS=1`
+/// rewrites them). Each is `prep` with the pass's canned reply, then `render`.
+fn way_reply(way: Value) -> Value {
+    json!({"pattern": "implement-issue", "confidence": 0.9, "alt": [], "flags": {"brief": false},
+           "filled": {}, "candidates": {}, "relevant": {}, "ambiguous": [], "way": way})
+}
+
+fn way_render(s: &Scratch, repo: &Path, ask: &str, args: &[&str], way: Value) -> (Value, String) {
+    s.reply(way_reply(way));
+    let mut a = vec!["prep", "--have", "none"];
+    a.extend_from_slice(args);
+    let out = s.json(repo, &a, ask);
+    let run = out["run"].as_str().unwrap().to_string();
+    let r = s.json(repo, &["render", &run, "--rest", "recommended"], "{}");
+    (out, r["prompt"].as_str().unwrap().to_string())
+}
+
+#[test]
+fn each_way_and_the_small_task_render_as_their_golden_file() {
+    let s = Scratch::new("way");
+    let repo = s.repo("logger", "main");
+    let golden = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden-way");
+    let bless = std::env::var_os("PROMPTU_BLESS").is_some();
+    let big = "port the three logger tools to the new export format, one tool at a time";
+    let cases: [(&str, &[&str], Value); 5] = [
+        ("workers", &[], json!({"name": "workers", "how": "One worker per logger tool, each in its own worktree, after the export format is fixed.", "why": "The three ports are independent and each is long."})),
+        ("handoff", &["--context-usage", "84"], json!({"name": "handoff", "how": "Stop once the export format is agreed and hand off with the handoff tool.", "why": "The chat is at 84 % and the ports start from the agreed format, not from this history."})),
+        ("compactions", &["--context-usage", "63"], json!({"name": "compactions", "how": "Compact after each tool is ported, keeping the format decisions and the open defects.", "why": "The work stays in this thread but the history grows with every tool."})),
+        ("decimation", &[], json!({"name": "decimation", "how": "Three tasks in order: the shared format, then each tool's port, then the converter.", "why": "Each step is one session's work and needs no history from the last."})),
+        ("small", &[], Value::Null),
+    ];
+    for (name, args, way) in cases {
+        let ask = if name == "small" { "rename the export flag in the logger CLI" } else { big };
+        let (out, text) = way_render(&s, &repo, ask, args, way.clone());
+        assert_eq!(out["way"], way, "{name}");
+        let footer = text.lines().last().unwrap();
+        assert_eq!(footer.contains(&format!("way={name}")), name != "small", "{footer}");
+        assert!(text.contains(ask), "the Goal stays verbatim");
+        assert_eq!(text.contains("Context plan"), name != "small");
+        let file = golden.join(format!("{name}.md"));
+        if bless {
+            std::fs::create_dir_all(&golden).unwrap();
+            std::fs::write(&file, format!("{}\n", text.trim_end())).unwrap();
+        }
+        let want = std::fs::read_to_string(&file).unwrap_or_else(|_| panic!("{} is missing (PROMPTU_BLESS=1)", file.display()));
+        assert_eq!(format!("{}\n", text.trim_end()), want, "{name}");
+    }
+}
+
+#[test]
+fn the_context_usage_reaches_the_pass_only_when_given_and_a_bad_way_is_dropped() {
+    let s = Scratch::new("way-usage");
+    let repo = s.repo("logger", "main");
+    // Without it the block is absent: the pass judges from the text alone.
+    way_render(&s, &repo, "port the logger tools", &[], Value::Null);
+    assert!(!s.sent("stdin.txt").contains("<context_usage>"));
+    let (out, _) = way_render(&s, &repo, "port the logger tools", &["--context-usage", "71"], Value::Null);
+    assert!(s.sent("stdin.txt").contains("<context_usage>\n71%\n</context_usage>"));
+    assert_eq!(out["context_usage"], 71);
+    assert!(s.sent("stdin.txt").contains("<prompt>") && s.sent("argv.txt").contains("context_usage"));
+    // Not one of the four, or no why: no way.
+    for bad in [json!({"name": "pray", "how": "x", "why": "y"}), json!({"name": "handoff", "how": "x", "why": " "})] {
+        let (out, text) = way_render(&s, &repo, "port the logger tools", &[], bad);
+        assert_eq!(out["way"], Value::Null);
+        assert!(!text.contains("Context plan") && !text.contains("way="));
+    }
+    let o = s.run(&repo, &["prep", "--context-usage", "101"], "port the logger tools", &[]);
+    assert_eq!(o.status.code(), Some(2));
+}

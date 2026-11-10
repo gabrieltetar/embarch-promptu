@@ -103,6 +103,8 @@ pub struct Sources {
     pub memory_by_id: BTreeMap<String, Vec<String>>,
     pub last: String,
     pub context: String,
+    /// The chat's context usage, whole percent (docs/contract.md §7.10): `None` from Start work or the terminal.
+    pub context_usage: Option<u32>,
 }
 
 fn block(tag: &str, body: &str) -> String {
@@ -114,16 +116,18 @@ pub fn user_message(src: &Sources, scores: &BTreeMap<String, i64>) -> String {
     let mut ranked: Vec<(&String, &i64)> = scores.iter().collect();
     ranked.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
     let hint = if ranked.is_empty() { "(no hits)".to_string() } else { ranked.iter().map(|(k, v)| format!("{k} {v}")).collect::<Vec<_>>().join(", ") };
-    [
-        block("prompt", &src.prompt),
-        block("context", &src.context),
+    let mut parts = vec![block("prompt", &src.prompt), block("context", &src.context)];
+    // Absent, not "(none)": the pass judges from the text alone.
+    if let Some(u) = src.context_usage {
+        parts.push(format!("<context_usage>\n{u}%\n</context_usage>"));
+    }
+    parts.extend([
         block("desk", &src.desk),
         block("memory", &src.memory),
         block("last", &src.last),
         format!("<regex_hint>\n{hint}\n</regex_hint>"),
-    ]
-    .join("\n")
-        + "\n"
+    ]);
+    parts.join("\n") + "\n"
 }
 
 /// How to call the model.
@@ -303,6 +307,43 @@ pub struct Guarded {
     pub candidates: BTreeMap<String, Vec<String>>,
     pub relevant: BTreeMap<String, bool>,
     pub ambiguous: Option<Ambiguity>,
+    pub way: Option<Way>,
+}
+
+/// The four ways to work at high context (decision 41), as the footer's `way=` names them.
+pub const WAYS: [(&str, &str); 4] = [
+    ("workers", "Parallel background workers"),
+    ("handoff", "Handoff prompts"),
+    ("compactions", "Scheduled compactions"),
+    ("decimation", "Task decimation"),
+];
+
+/// The way the pass picked for a task that will outgrow one context window.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Way {
+    pub name: String,
+    pub how: String,
+    pub why: String,
+}
+
+impl Way {
+    /// The line added to Who does it.
+    pub fn line(&self) -> String {
+        let label = WAYS.iter().find(|(n, _)| *n == self.name).map(|(_, l)| *l).unwrap_or("");
+        format!("- Context plan, {}: {} Why: {}", label.to_lowercase(), self.how.trim(), self.why.trim())
+    }
+}
+
+/// The reply's `way`: one of the four names with a how and a why, else `None`.
+/// A single line each: the line is rendered into the prompt as is.
+fn guard_way(v: &Value) -> Option<Way> {
+    let w = v.get("way")?;
+    let name = w["name"].as_str()?.trim().to_lowercase();
+    let one_line = |k: &str| w[k].as_str().map(|s| s.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|s| !s.is_empty());
+    if !WAYS.iter().any(|(n, _)| *n == name) {
+        return None;
+    }
+    Some(Way { name, how: one_line("how")?, why: one_line("why")? })
 }
 
 /// A fill's value as this question takes it: one of its labels (`choice`,
@@ -388,6 +429,7 @@ pub fn guard(v: &Value, set: &Set, src: &Sources, parts: &[String]) -> Guarded {
     g.firmware = v["flags"]["firmware"].as_bool().unwrap_or(false);
     g.brief = v["flags"]["brief"].as_bool().unwrap_or(false);
     let Some(p) = p else { return g };
+    g.way = guard_way(v);
     let qs = set.questions(p);
     let q_of = |id: &str| qs.iter().find(|q| q.id == id);
     for (id, f) in v["filled"].as_object().into_iter().flatten() {

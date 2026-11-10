@@ -199,6 +199,8 @@ pub struct PrepArgs {
     pub have: Vec<String>,
     /// A desk Start work run: the `signals.desk` rules apply (contract §7.8).
     pub start: bool,
+    /// The chat's context usage, whole percent 0 to 100 (contract §7.10).
+    pub context_usage: Option<u32>,
 }
 
 fn call_for(table: &toml::Table) -> Result<Call, String> {
@@ -225,7 +227,11 @@ pub fn prep(prompt: &str, args: PrepArgs) -> Result<Value, Fail> {
     }
     let table = config::table();
     let cwd = std::env::current_dir().map_err(|e| Fail::Other(e.to_string()))?;
-    let g = gather(&cwd, &prompt, args.desk.as_deref(), args.pattern.as_deref(), &table, &set)?;
+    if args.context_usage.is_some_and(|u| u > 100) {
+        return Err(Fail::Usage("--context-usage is a percent, 0 to 100".into()));
+    }
+    let mut g = gather(&cwd, &prompt, args.desk.as_deref(), args.pattern.as_deref(), &table, &set)?;
+    g.src.context_usage = args.context_usage;
     state::prune(7);
     let scores = pass::regex_scores(&set, &prompt);
     let mut run = Run {
@@ -244,6 +250,8 @@ pub fn prep(prompt: &str, args: PrepArgs) -> Result<Value, Fail> {
         offline: false,
         offline_reason: None,
         brief: pass::looks_like_brief(&prompt),
+        context_usage: args.context_usage,
+        way: None,
         flags: g.flags.clone(),
         ctx: g.ctx.clone(),
         fills: BTreeMap::new(),
@@ -315,6 +323,7 @@ pub fn prep(prompt: &str, args: PrepArgs) -> Result<Value, Fail> {
                 run.candidates = gd.candidates;
                 run.relevant = gd.relevant;
                 run.ambiguous = gd.ambiguous;
+                run.way = gd.way;
                 if args.pattern.is_some() {
                     run.picked_by = "flag".into();
                 }
@@ -441,6 +450,8 @@ pub fn describe(run: &Run, set: &Set) -> Value {
         "offline": run.offline,
         "offline_reason": run.offline_reason,
         "mode": if run.brief { "brief" } else { "normal" },
+        "way": run.way,
+        "context_usage": run.context_usage,
         "parts": run.parts,
         "flags": run.flags,
         "filled": filled,
