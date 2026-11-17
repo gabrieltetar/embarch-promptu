@@ -26,10 +26,10 @@ Type what you want the way you would anyway, after `/promptu`:
 
 1. **One quick model call** (Claude Sonnet through your own Claude Code login, no tools, nothing saved, about 4 seconds) picks the kind of task from a small set of patterns, and pre-fills what your prompt, your project's memory and last time's answers already say, each with a quote as evidence. A fill whose quote is not really in its source is thrown away.
 2. **It asks only what is missing**, costliest gap first ("when is it done?" comes before "how should fixes be committed?"), in Claude Code's own question dialogs, with a recommended answer first. One option takes the rest as recommended; Esc turns what is left into assumptions the prompt tells Claude to state.
-3. **It writes a short headed prompt**: Goal · Context · Read first · Done when · Constraints · Who does it, only the sections with content, **your own words kept verbatim under Goal**. A brief you paste that is already structured stays word for word; only its gaps are added.
+3. **It writes a short headed prompt**: Goal · Context · Read first · Done when · Constraints · Who does it, only the sections with content, then one more model call **rewrites your rough prompt** from your words, the answers and that plan, and the footer says `rewritten=yes` (decision 42). **Your original is kept in the log**: `promptu original <run>` prints it. A brief you paste that is already structured stays word for word; only its gaps are added. `rewrite = "off"` in the config turns the rewrite off.
 4. **It shows you the prompt and asks "send as is / edit"** before Claude acts on it.
 
-The last line of every prompt is a footer such as `— promptu review-loop@1 asked=stop:rec,lens:o1+o3 filled=target:prompt`: what was asked, filled and assumed. It is the only record a run leaves, and what a later weekly review learns from.
+The last line of every prompt is a footer such as `— promptu review-loop@1 asked=stop:rec,lens:o1+o3 filled=target:prompt`: what was asked, filled and assumed. It is the record of what a run asked, and what a later weekly review learns from; the log keeps your original rough prompt and the rewrite's wait.
 
 The eleven patterns are in [`patterns/`](patterns): implement an issue, a review loop, draft a message, relay a colleague's ask, shape a design, address PR comments, research and explain, debug a failure, write a handoff, a bench session, delegate to background agents; plus two fragments (house rules, bench state). Each is one Markdown file: the frontmatter is the quiz, the body the template. Everything specific to you comes from your memory at run time, never from a pattern file.
 
@@ -38,6 +38,8 @@ promptu prep < rough.txt      # pick, fill, plan the questions (JSON)
 promptu next <run>            # a page of answers in (JSON), what is left out
 promptu render <run>          # the prompt and its footer
 promptu patterns [--json]     # the patterns, for a picker
+promptu original <run>        # the rough prompt as you typed it, from the log
+promptu stats                 # p50 and p95 of the wait after the last question
 promptu lint [--show]         # check pattern files; --show renders every example
 ```
 

@@ -15,6 +15,8 @@
 //! pass_timeout_s = 15
 //! voice_skill = "my-voice"   # any string key reaches templates as {{config.<key>}}
 //! memory_claude_md_sections = ["Working rules"]   # default: every section
+//! rewrite = "on"             # "off": no rewrite after the questions (decision 42)
+//! rewrite_model = "sonnet"   # the rewrite's model; rewrite_effort = "low", rewrite_timeout_s = 30
 //! ```
 
 use chrono::NaiveDate;
@@ -101,6 +103,32 @@ pub fn pass_model(t: &toml::Table) -> String {
 
 pub fn pass_timeout(t: &toml::Table) -> std::time::Duration {
     let s = t.get("pass_timeout_s").and_then(|v| v.as_integer()).filter(|n| (1..=600).contains(n)).unwrap_or(15);
+    std::time::Duration::from_secs(s as u64)
+}
+
+/// Whether `render` rewrites the rough prompt (decision 42): `rewrite = "off"`
+/// keeps the structured render with his words verbatim under Goal.
+pub fn rewrite_enabled(t: &toml::Table) -> bool {
+    !matches!(t.get("rewrite").and_then(|v| v.as_str()).map(|s| s.trim().to_ascii_lowercase()).as_deref(), Some("off"))
+}
+
+/// The rewrite's model: a setting, `sonnet` until the owner picks (decision 42 leaves it open).
+pub fn rewrite_model(t: &toml::Table) -> String {
+    t.get("rewrite_model").and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).unwrap_or("sonnet").to_string()
+}
+
+/// The rewrite's effort: `low`, `medium` or `high`; default `low`.
+pub fn rewrite_effort(t: &toml::Table) -> &'static str {
+    match t.get("rewrite_effort").and_then(|v| v.as_str()).map(|s| s.trim().to_ascii_lowercase()).as_deref() {
+        Some("medium") => "medium",
+        Some("high") => "high",
+        _ => "low",
+    }
+}
+
+/// The rewrite's time limit, 1 to 600 s; default 30.
+pub fn rewrite_timeout(t: &toml::Table) -> std::time::Duration {
+    let s = t.get("rewrite_timeout_s").and_then(|v| v.as_integer()).filter(|n| (1..=600).contains(n)).unwrap_or(30);
     std::time::Duration::from_secs(s as u64)
 }
 

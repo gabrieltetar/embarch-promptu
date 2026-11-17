@@ -1,6 +1,6 @@
 ---
 name: promptu
-description: Turn a rough task prompt into a good one before working on it. Promptu picks the kind of task, fills in what the prompt, the work item, memory and last time's answers already say, asks only what is missing (recommended answers first), writes a short headed prompt with the user's own words kept verbatim, and asks "send as is / edit" before anything runs. Only when the user types /promptu.
+description: Turn a rough task prompt into a good one before working on it. Promptu picks the kind of task, fills in what the prompt, the work item, memory and last time's answers already say, asks only what is missing (recommended answers first), writes a short headed prompt (a rewrite of the user's rough one, which stays in Promptu's log; a pasted brief is left as typed), and asks "send as is / edit" before anything runs. Only when the user types /promptu.
 argument-hint: "[--item <wNN>] [pattern=<id>] [--rec] <rough prompt>"
 disable-model-invocation: true
 allowed-tools: Bash(promptu prep:*), Bash(promptu next:*), Bash(promptu render:*)
@@ -75,7 +75,7 @@ With `--rec`, or when `done` is true, there is nothing to ask.
 promptu render <run> [--rest assume]
 ```
 
-It prints JSON with `prompt` (Markdown, ending in a `— promptu …` footer line) and `draft` (the same text in a file).
+It makes one more model call that rewrites the rough prompt, so it can take several seconds; a brief is not rewritten, and if the rewrite fails the structured prompt comes back instead. It prints JSON with `prompt` (Markdown, ending in a `— promptu …` footer line, `rewritten=yes` when rewritten) and `draft` (the same text in a file). The user's original is kept: `promptu original <run>` prints it.
 
 ## 5. Show it, then wait
 

@@ -19,6 +19,7 @@ mod mustache;
 mod pass;
 mod pattern;
 mod prep;
+mod rewrite;
 mod run;
 mod sha1;
 mod state;
@@ -91,6 +92,22 @@ enum Cmd {
         #[arg(long)]
         text: bool,
     },
+    /// Print a run's rough prompt as typed, from Promptu's log (§8.5): what the chat's card restores the draft to.
+    Original {
+        /// The run id `prep` printed.
+        run: String,
+        /// Print the whole log entry as JSON instead of the prompt alone.
+        #[arg(long)]
+        json: bool,
+    },
+    /// The wait after the last question, and the rewrite call's time, p50 and p95 over the logged runs (§8.6).
+    Stats {
+        /// Only runs rewritten by this model.
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// The task patterns this binary carries, for a picker (§7.9).
     Patterns {
         #[arg(long)]
@@ -157,6 +174,8 @@ fn main() {
                 Cmd::Calls { session, subagent, class, json } => run_calls(&session, subagent.as_deref(), class.as_deref(), json),
                 Cmd::Next { run } => run_next(&run),
                 Cmd::Render { run, rest, text } => run_render(&run, rest, text),
+                Cmd::Original { run, json } => run_original(&run, json),
+                Cmd::Stats { model, json } => run_stats(model.as_deref(), json),
                 Cmd::Lint { paths, json, show, have } => run_lint(&paths, json, show, have),
                 Cmd::Patterns { json, have: _ } => run_patterns(json),
                 Cmd::Hook => 0,
@@ -320,6 +339,42 @@ fn run_render(run: &str, rest: Option<String>, text: bool) -> i32 {
         prep::render(run, &v)
     });
     finish(r, text)
+}
+
+/// `promptu original <run>` (§8.5): 0 printed, 2 for no such run or no log entry.
+fn run_original(run: &str, json: bool) -> i32 {
+    debug_panic();
+    match state::load_log(run) {
+        Ok(Some(e)) => {
+            if json {
+                println!("{}", serde_json::to_string_pretty(&e).unwrap_or_default());
+            } else {
+                // The prompt exactly as typed: no added newline.
+                print!("{}", e.original);
+            }
+            0
+        }
+        Ok(None) => {
+            eprintln!("promptu: no log entry for run `{run}`");
+            2
+        }
+        Err(m) => {
+            eprintln!("promptu: {m}");
+            2
+        }
+    }
+}
+
+/// `promptu stats` (§8.6).
+fn run_stats(model: Option<&str>, json: bool) -> i32 {
+    debug_panic();
+    let v = rewrite::stats(&state::all_logs(), model);
+    if json {
+        println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+    } else {
+        print!("{}", rewrite::stats_text(&v));
+    }
+    0
 }
 
 /// The task patterns, name order: what the chat's Promptu card offers to

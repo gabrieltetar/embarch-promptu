@@ -29,7 +29,7 @@ impl Scratch {
         let fake = root.join("fake/claude");
         std::fs::write(
             &fake,
-            "#!/bin/sh\ncat > \"$PROMPTU_FAKE_DIR/stdin.txt\"\nprintf '%s\\n' \"$@\" > \"$PROMPTU_FAKE_DIR/argv.txt\"\nenv > \"$PROMPTU_FAKE_DIR/env.txt\"\nif [ -n \"$PROMPTU_FAKE_SLEEP\" ]; then sleep \"$PROMPTU_FAKE_SLEEP\"; fi\nif [ -n \"$PROMPTU_FAKE_NOISE\" ]; then head -c 300000 /dev/zero | tr '\\0' x >&2; sleep 6 & fi\ncat \"$PROMPTU_FAKE_DIR/reply.json\"\n",
+            "#!/bin/sh\ncat > \"$PROMPTU_FAKE_DIR/stdin.txt\"\nprintf '%s\\n' \"$@\" > \"$PROMPTU_FAKE_DIR/argv.txt\"\nenv > \"$PROMPTU_FAKE_DIR/env.txt\"\nif [ -n \"$PROMPTU_FAKE_SLEEP\" ]; then sleep \"$PROMPTU_FAKE_SLEEP\"; fi\nif [ -n \"$PROMPTU_FAKE_NOISE\" ]; then head -c 300000 /dev/zero | tr '\\0' x >&2; sleep 6 & fi\nn=$(cat \"$PROMPTU_FAKE_DIR/count\" 2>/dev/null || echo 0); n=$((n+1)); echo $n > \"$PROMPTU_FAKE_DIR/count\"; if [ -f \"$PROMPTU_FAKE_DIR/reply$n.json\" ]; then cat \"$PROMPTU_FAKE_DIR/reply$n.json\"; else cat \"$PROMPTU_FAKE_DIR/reply.json\"; fi\n",
         )
         .unwrap();
         #[cfg(unix)]
@@ -37,7 +37,7 @@ impl Scratch {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
-        std::fs::write(root.join("cfg/config.toml"), "voice_skill = \"my-voice\"\n").unwrap();
+        std::fs::write(root.join("cfg/config.toml"), "voice_skill = \"my-voice\"\nrewrite = \"off\"\n").unwrap();
         Scratch { root }
     }
 
@@ -1085,4 +1085,131 @@ fn the_context_usage_reaches_the_pass_only_when_given_and_a_bad_way_is_dropped()
     }
     let o = s.run(&repo, &["prep", "--context-usage", "101"], "port the logger tools", &[]);
     assert_eq!(o.status.code(), Some(2));
+}
+
+// ---------------------------------------------------------------- decision 42: the rewrite
+
+impl Scratch {
+    /// The rewrite model's reply (the second call a run makes): plain text in the result envelope.
+    fn rewrite_reply(&self, text: &str) {
+        let env = json!({"type": "result", "is_error": false, "terminal_reason": "completed", "result": text, "total_cost_usd": 0.001});
+        std::fs::write(self.root.join("fake/reply2.json"), env.to_string()).unwrap();
+    }
+
+    fn rewrite_on(&self, extra: &str) {
+        std::fs::write(self.root.join("cfg/config.toml"), format!("voice_skill = \"my-voice\"\n{extra}")).unwrap();
+    }
+}
+
+const REWRITTEN: &str = "## Goal\nValidate both reworks on the stepper driver board.\n\n## Done when\n- The fault pin stays high.";
+
+#[test]
+fn a_rough_prompt_lands_rewritten_and_its_original_is_in_the_log() {
+    let s = Scratch::new("rewrite");
+    let repo = s.repo("motor-fw", "main");
+    seed_memory(&s, &repo);
+    s.rewrite_on("rewrite_model = \"haiku\"\n");
+    s.reply(bench_reply());
+    s.rewrite_reply(REWRITTEN);
+    let out = s.json(&repo, &["prep", "--have", "desk,embarch-api"], BENCH_ASK);
+    let run = out["run"].as_str().unwrap();
+    let r = s.json(&repo, &["render", run, "--rest", "recommended"], "{}");
+    let prompt = r["prompt"].as_str().unwrap();
+    assert_eq!(r["rewritten"], true);
+    assert!(prompt.starts_with(REWRITTEN), "{prompt}");
+    assert!(!prompt.contains(BENCH_ASK), "the rough text is no longer verbatim: {prompt}");
+    let footer = prompt.lines().last().unwrap();
+    assert!(footer.starts_with("— promptu bench-session@") && footer.ends_with(" rewritten=yes"), "{footer}");
+    assert_eq!(r["footer"], footer);
+    // The draft is the rewrite.
+    assert_eq!(std::fs::read_to_string(r["draft"].as_str().unwrap()).unwrap(), prompt);
+    // What the rewrite was sent: the three blocks, with his words in `rough` and the plan.
+    let sent = s.sent("stdin.txt");
+    assert!(sent.contains(&format!("<rough>\n{BENCH_ASK}\n</rough>")), "{sent}");
+    assert!(sent.contains("<answers>") && sent.contains("<plan>\n## Goal"), "{sent}");
+    assert!(s.sent("argv.txt").contains("haiku"), "the model is the setting");
+    // The verb prints the original as typed, with no added newline.
+    let o = s.run(&repo, &["original", run], "", &[]);
+    assert_eq!(o.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&o.stdout), BENCH_ASK);
+    let j = s.json(&repo, &["original", run, "--json"], "");
+    assert_eq!(j["original"], BENCH_ASK);
+    assert_eq!(j["rewritten"], true);
+    assert_eq!(j["rewrite_model"], "haiku");
+    assert_eq!(j["rendered"], prompt);
+    assert!(j["wait_ms"].as_u64().unwrap() >= j["rewrite_ms"].as_u64().unwrap());
+    // Rendering again keeps the original and one entry.
+    s.json(&repo, &["render", run], "{}");
+    assert_eq!(s.json(&repo, &["original", run, "--json"], "")["original"], BENCH_ASK);
+    assert_eq!(std::fs::read_dir(s.root.join("state/log")).unwrap().count(), 1);
+}
+
+#[test]
+fn a_pasted_brief_lands_unchanged_and_is_logged_without_a_rewrite() {
+    let s = Scratch::new("rewrite-brief");
+    let repo = s.repo("motor-fw", "main");
+    seed_memory(&s, &repo);
+    s.rewrite_on("");
+    let mut reply = bench_reply();
+    reply["flags"]["brief"] = json!(true);
+    s.reply(reply);
+    s.rewrite_reply("SHOULD NOT BE USED");
+    let brief = "## Goal\nValidate the two reworks on the stepper driver board.\n\n## Order of work\n1. Flash.\n2. Toggle enable 50 times.\n\n## Done when\nThe fault pin stays high.";
+    let out = s.json(&repo, &["prep", "--have", "desk,embarch-api"], brief);
+    let run = out["run"].as_str().unwrap();
+    let r = s.json(&repo, &["render", run, "--rest", "recommended"], "{}");
+    let prompt = r["prompt"].as_str().unwrap();
+    assert!(prompt.starts_with(brief), "{prompt}");
+    assert_eq!(r["rewritten"], false);
+    assert!(prompt.lines().last().unwrap().contains("mode=brief") && !prompt.contains("rewritten="));
+    let j = s.json(&repo, &["original", run, "--json"], "");
+    assert_eq!(j["mode"], "brief");
+    assert_eq!(j["rewrite_skipped"], "brief");
+    assert_eq!(j["original"], brief);
+    assert!(s.root.join("fake/count").exists());
+    assert_eq!(std::fs::read_to_string(s.root.join("fake/count")).unwrap().trim(), "1");
+}
+
+#[test]
+fn a_failed_rewrite_leaves_the_structured_prompt_and_says_why_in_the_log() {
+    let s = Scratch::new("rewrite-fail");
+    let repo = s.repo("motor-fw", "main");
+    seed_memory(&s, &repo);
+    s.rewrite_on("");
+    s.reply(bench_reply());
+    std::fs::write(s.root.join("fake/reply2.json"), json!({"type": "result", "is_error": true, "result": "overloaded"}).to_string()).unwrap();
+    let out = s.json(&repo, &["prep", "--have", "desk,embarch-api"], BENCH_ASK);
+    let run = out["run"].as_str().unwrap();
+    let r = s.json(&repo, &["render", run, "--rest", "recommended"], "{}");
+    assert_eq!(r["rewritten"], false);
+    assert!(r["prompt"].as_str().unwrap().contains(BENCH_ASK), "decision 24's fallback: his words stay");
+    let j = s.json(&repo, &["original", run, "--json"], "");
+    assert!(j["rewrite_skipped"].as_str().unwrap().starts_with("failed: "), "{j}");
+    assert_eq!(j["rewritten"], false);
+}
+
+#[test]
+fn original_exits_2_for_an_unknown_run_and_stats_gives_p50_and_p95() {
+    let s = Scratch::new("rewrite-stats");
+    let repo = s.repo("motor-fw", "main");
+    seed_memory(&s, &repo);
+    assert_eq!(s.run(&repo, &["original", "no-such-run"], "", &[]).status.code(), Some(2));
+    assert_eq!(s.run(&repo, &["original", "../../etc/passwd"], "", &[]).status.code(), Some(2));
+    s.rewrite_on("rewrite_model = \"haiku\"\n");
+    for i in 0..3 {
+        s.reply(bench_reply());
+        s.rewrite_reply(REWRITTEN);
+        let _ = std::fs::remove_file(s.root.join("fake/count"));
+        let out = s.json(&repo, &["prep", "--have", "desk,embarch-api"], &format!("{BENCH_ASK} {i}"));
+        s.json(&repo, &["render", out["run"].as_str().unwrap(), "--rest", "recommended"], "{}");
+    }
+    let v = s.json(&repo, &["stats", "--json"], "");
+    assert_eq!(v["runs"], 3);
+    assert_eq!(v["rewritten"], 3);
+    assert_eq!(v["wait_ms"]["n"], 3);
+    assert!(v["wait_ms"]["p50"].is_u64() && v["wait_ms"]["p95"].is_u64() && v["rewrite_ms"]["p95"].is_u64());
+    assert_eq!(v["models"]["haiku"]["wait_ms"]["n"], 3);
+    assert_eq!(s.json(&repo, &["stats", "--json", "--model", "opus"], "")["rewritten"], 0);
+    let o = s.run(&repo, &["stats"], "", &[]);
+    assert!(String::from_utf8_lossy(&o.stdout).contains("p95"), "{}", String::from_utf8_lossy(&o.stdout));
 }

@@ -280,7 +280,7 @@ run      = pattern "@" version [ " asked=" ask *( "," ask ) ]
                                [ " skipped=" qid *( "," qid ) ]
                                [ " assume=" qid *( "," qid ) ]
                                [ " pick=owner" ]
-                               [ " mode=brief" ] [ " way=" way ]
+                               [ " mode=brief" ] [ " way=" way ] [ " rewritten=yes" ]
 pattern  = 1*64( %x61-7A / DIGIT / "-" )          ; a pattern's name
 version  = 1*DIGIT                                ; its `version`
 ask      = qid ":" ( "rec" / "all" / choice *( "+" choice ) )
@@ -300,7 +300,7 @@ Fields appear in this order; one with nothing is left out. Example:
 
 ### 6.2 Meaning
 
-`asked`: questions put to the owner and what he took (`rec` the recommendation, `all` taken by "accept all", `oN` the Nth option, `other` free text). For a `text` question, `rec` is the first option shown (its prompt pre-selection or the pass's first candidate), `oN` counts its static options, then its fallback options (`leave-out`/`not-sure`: the question's own fallback is o(K+1), the other o(K+2), K static options), and another candidate is `other`. `meaning` is the generated ambiguity question (§7.8), `oN` the Nth meaning. `filled`: questions answered without asking, by source. `skipped`: neither asked nor filled; the default was used. `assume`: left open by Esc, rendered as assumptions Claude must state. `pick=owner`: he switched pattern. `mode=brief`, after `pick`: the prompt was a pasted brief, checked for its gaps only (decision 24); `skipped` is then absent, as a brief takes no defaults. `way=<name>`, after `mode`: the pass judged the work would outgrow one context window and named that way in Who does it (§7.10). `none`: Promptu ran and no pattern was used. A reader takes the last line of a prompt that starts with `— promptu `, ignores fields it does not know, and treats a deleted footer as no run.
+`asked`: questions put to the owner and what he took (`rec` the recommendation, `all` taken by "accept all", `oN` the Nth option, `other` free text). For a `text` question, `rec` is the first option shown (its prompt pre-selection or the pass's first candidate), `oN` counts its static options, then its fallback options (`leave-out`/`not-sure`: the question's own fallback is o(K+1), the other o(K+2), K static options), and another candidate is `other`. `meaning` is the generated ambiguity question (§7.8), `oN` the Nth meaning. `filled`: questions answered without asking, by source. `skipped`: neither asked nor filled; the default was used. `assume`: left open by Esc, rendered as assumptions Claude must state. `pick=owner`: he switched pattern. `mode=brief`, after `pick`: the prompt was a pasted brief, checked for its gaps only (decision 24); `skipped` is then absent, as a brief takes no defaults. `way=<name>`, after `mode`: the pass judged the work would outgrow one context window and named that way in Who does it (§7.10). `rewritten=yes`, last: the prompt above the footer is the rewrite's text, not his words under Goal (decision 42, §8.4); its absence means the structured render, or a brief, left his words as typed. `none`: Promptu ran and no pattern was used. A reader takes the last line of a prompt that starts with `— promptu `, ignores fields it does not know, and treats a deleted footer as no run.
 
 ### 6.3 Memory id
 
@@ -402,9 +402,10 @@ Under `PROMPTU_STATE_DIR`, else `$XDG_STATE_HOME/embarch-promptu`, else `~/.loca
 | `runs/<run>.json` | One run between `prep` and `render`: the rough prompt, the pick, the guarded fills, candidates, relevance, the answers so far. Deleted 7 days after its last write (each `prep` prunes). |
 | `last/<project>.json` | `{"promptu": 1, "patterns": {"<pattern>": {"date", "version", "answers": {"<qid>": {"answer": {…}, "text": "<as it reads>"}}}}}`: each pattern's latest answers in one project, written by `render`, read as the `last` source. `<project>` is the main checkout's memory-folder name (§1.2). |
 | `drafts/<run>.md` | The rendered prompt, for "edit first". Pruned with the runs. |
+| `log/<run>.json` | One entry per rendered run (decision 42): the rough prompt as typed, what landed in the draft, and what the rewrite cost; shape in §8.4. **Never pruned**: it is the record the chat's card restores from and `promptu stats` measures over. Rendering the same run again overwrites its entry, the original unchanged. |
 | `pass/` | The empty folder the model runs in. |
 
-A run id is `YYYYMMDD-HHMMSS-<4 hex>`. **The footer remains the only record of what a run asked** (§6); the run file is scratch and `last/` holds no more than the answers themselves ([forks](forks.md) S6).
+A run id is `YYYYMMDD-HHMMSS-<4 hex>`. **The footer is the record of what a run asked** (§6); the run file is scratch and `last/` holds no more than the answers themselves ([forks](forks.md) S6). The log (decision 42) is the second record: the original and the rewrite's cost, not the questions.
 
 ### 7.6 Configuration
 
@@ -416,6 +417,10 @@ pass_model = "sonnet"
 pass_timeout_s = 15        # 1–600
 voice_skill = "my-voice"   # any string key reaches templates as {{config.<key>}}
 memory_claude_md_sections = ["Working rules"]   # which global CLAUDE.md sections join the memory source; absent: all
+rewrite = "on"             # on (default) · off: no rewrite after the questions (§8.4)
+rewrite_model = "sonnet"   # the rewrite's model: a setting, the owner's to settle (decision 42); any `claude --model` value
+rewrite_effort = "low"     # low · medium · high; anything else: low
+rewrite_timeout_s = 30     # 1–600
 
 [embarch]                  # the optional EmbArch integration (decision 29)
 desk = "auto"              # auto · on · off
@@ -531,13 +536,54 @@ Records the input, re-plans, and prints the same JSON as `prep` (§7.8) for the 
 
 ### 8.3 `promptu render <run> [--rest recommended|assume] [--text]`
 
-Records the input, then writes the prompt; deterministic and model-free. **Pages left unanswered with no `rest` count as Esc.** Prints `{ "promptu": 1, "run", "pattern", "prompt", "footer", "sections", "draft" }`, or with `--text` the prompt alone; writes `drafts/<run>.md` and this project's `last/` entry. **None of those writes can fail it**: a draft that cannot be written leaves `draft` out, and an unsaved run or last answers change nothing in the output. Rendering again is allowed.
+Records the input, then writes the prompt. The structured render (below) is deterministic and model-free; **from decision 42 `render` then makes one model call, the rewrite (§8.4)**, so it takes seconds, not milliseconds, unless the run is a brief, has no pattern, is offline or has `rewrite = "off"`. **Pages left unanswered with no `rest` count as Esc.** Prints `{ "promptu": 1, "run", "pattern", "prompt", "footer", "sections", "rewritten", "draft" }`, or with `--text` the prompt alone; writes `drafts/<run>.md`, `log/<run>.json` and this project's `last/` entry. **None of those writes can fail it**: a draft that cannot be written leaves `draft` out, and an unsaved run, log or last answers change nothing in the output. Rendering again is allowed.
 
 - **A pattern**: its template with the context and the answers (§7.2). An answered `_meaning` adds `By "<phrase>" I mean <meaning>.` to Context. Assumptions add one line to Constraints: `- Not answered; state your assumption before you start: <ask> <ask> …`. A section the prompt lacks is created in its place among the six.
 - **A brief** (decision 24): the rough prompt verbatim, then only what it left open, under the six headings: each answer as a bullet (the option's value when it is a sentence, else `<header>: <value>`), plus the meaning and the assumptions. A fill the brief itself gave adds nothing.
 - **No pattern**: the rough prompt verbatim, a blank line, `— promptu none`.
 - **The value of an answer**: an option's `value` with its context tokens rendered; a candidate's or free text as given; a `not-sure` fallback as "not known yet; ask me before relying on it"; a `leave-out` fallback as nothing.
-- **The footer**: §6, fields in pattern order.
+- **The footer**: §6, fields in pattern order; `rewritten=yes` last when §8.4 rewrote.
+
+### 8.4 The rewrite and the log (decision 42)
+
+After the structured render, `render` rewrites the rough prompt once, unless:
+
+| Skipped when | `rewrite_skipped` in the log |
+|---|---|
+| the run is a pasted brief (decision 24 stands: his text verbatim, only gaps added) | `brief` |
+| no pattern was used | `no-pattern` |
+| the run is offline (no model) | `offline` |
+| `rewrite = "off"` | `off` |
+| the call fails, times out (`rewrite_timeout_s`) or comes back empty: **the structured render stands**, his words verbatim under Goal, and `render` still exits 0 | `failed: <reason>` |
+
+- **The call**: a stripped `claude -p` like the pass (§7.3) with `rewrite_model`, `rewrite_effort` and `src/rewrite_system.md`, in the empty `pass/` folder. The message is three blocks: `<rough>` (as typed), `<answers>` (`question: answer`, one per line, what `last/` records) and `<plan>` (the structured render without its footer, so the six sections and the assumption and context-plan lines). The system prompt keeps every fact and answer, adds none, keeps the six headings, writes in his voice. A whole-reply code fence and any `— promptu ` line the model adds are stripped.
+- **What lands**: the rewrite, a blank line, the footer with `rewritten=yes`. The draft file holds the same. `render`'s JSON gains `"rewritten": true|false`.
+- **The log entry**, `log/<run>.json`:
+
+```json
+{ "promptu": 1, "run": "20261117-142600-ab12", "date": "2026-11-17T14:26:10-06:00",
+  "cwd": "/work/repo", "project_key": "-work-repo", "pattern": "bench-session", "version": 3,
+  "mode": "prompt",
+  "original": "<the rough prompt exactly as typed>",
+  "rendered": "<the prompt as it landed in the draft, footer included>",
+  "rewritten": true, "rewrite_skipped": null,
+  "rewrite_model": "sonnet", "rewrite_effort": "low",
+  "rewrite_ms": 4200, "wait_ms": 4300 }
+```
+
+`mode` is `brief` or `prompt`. `rewrite_model` and `rewrite_effort` are set whenever a call was tried (also when it failed); `rewrite_ms` only when it succeeded. **`wait_ms` is the owner's wait after the last question**: the `render` command from its start to the prompt ready. **`rendered` is what the weekly loop's edit signal compares the sent prompt against** (decision 14, amended by 42): the rewrite when there is one, the structured render otherwise. A run that was never rendered has no entry.
+
+### 8.5 `promptu original <run> [--json]`
+
+**The read-back verb**, called by `embarch-chat`'s Promptu card to roll the draft back to what the owner typed (EMB-197). Reads `log/<run>.json`.
+
+- **stdout**: the entry's `original`, exactly as typed, no added newline. With `--json`, the whole entry (§8.4) as pretty JSON.
+- **Exit 0** printed. **Exit 2**, nothing on stdout and one line on stderr: no log entry for that run (never rendered, or the id is not a run id).
+- Model-free and fast; it reads one file. The run id is the one `prep` and `render` print.
+
+### 8.6 `promptu stats [--model <name>] [--json]`
+
+p50 and p95 (nearest rank) of `wait_ms` and of `rewrite_ms` over the logged runs that were rewritten, overall and per `rewrite_model`; `--model` keeps one model's runs. JSON: `{ "promptu": 1, "runs", "rewritten", "wait_ms": { "n", "p50", "p95", "max" }, "rewrite_ms": { … }, "models": { "<model>": { "wait_ms", "rewrite_ms" } } }`; a percentile is `null` with no runs. Exit 0. The owner's measurement of the model and the wait, over at least ten real prompts, is this command's output: it is **owed, owner-side** (embarch-doc `tasks/promptu/007`).
 
 **Speed** [measured 2026-10-29, release build, WSL2]: `render` p50 3.1 ms, p95 3.7 ms; `prep --offline` (everything but the model) p50 7.2 ms. The hook, re-measured with this build's larger binary: p50 0.66 ms, p95 0.81 ms spawned directly, as in §3.8.
 
@@ -566,6 +612,7 @@ One week's ✓/✕ sheet under the local learning-data folder:
 - **Fixed:** §1.2's resolution, §2's labels, the hook's input handling, output shapes, exit codes and fail-open rules (§3), the check ids, the flag vocabulary's existing names, the footer grammar (§6.1) and the memory id (§6.3). From step 2: the pattern file's fields and their meaning (§7.1), the template's tokens and six sections (§7.2), the shapes of `prep`'s, `next`'s and `render`'s JSON (§7.8, §8), the answer forms `next` and `render` accept (§8.1), and the state paths (§7.5).
 - **May grow:** new checks with new ids, new flags, new fields in any JSON document, new footer fields placed after `pick` (readers ignore unknown fields), new lint checks, new config keys, new sources.
 - **From step 3, fixed:** `used` and `used_claude_md`'s item shape and what counts as a use (§5), `promptu patterns`' JSON (§7.9), and `prep --start` with its output fields `start` and `pattern.start_default` (§7.8).
+- **From decision 42, fixed:** `promptu original`'s output and exit codes (§8.5), the log entry's fields (§8.4), the footer's `rewritten=yes`. `stats`' output may grow.
 - **Open until built:** §9–§10, within §0's rules.
 
 ## 12. `promptu calls <session> [--subagent <id>] [--class <name>] [--json]`

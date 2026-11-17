@@ -6,6 +6,8 @@
 //! - `last/<project>.json`: each pattern's last answers in one project, the
 //!   `last` source. `<project>` is the main checkout's memory-folder name.
 //! - `drafts/<run>.md`: the rendered prompt, for "edit first".
+//! - `log/<run>.json`: one entry per rendered run, the rough prompt as typed, what
+//!   landed in the draft, the rewrite's model and wait (decision 42). Never pruned.
 //! - `pass/`: an empty folder the model call runs in.
 
 use crate::run::{Answer, Run};
@@ -82,6 +84,69 @@ pub fn write_draft(id: &str, text: &str) -> Result<PathBuf, String> {
     let p = dir()?.join("drafts").join(format!("{id}.md"));
     write_atomic(&p, text)?;
     Ok(p)
+}
+
+/// One run's log entry (docs/contract.md §7.5): the original rough prompt, kept
+/// so a rewrite can be undone, and what the rewrite cost.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct LogEntry {
+    pub promptu: u32,
+    pub run: String,
+    /// Local time, RFC 3339.
+    pub date: String,
+    pub cwd: String,
+    pub project_key: Option<String>,
+    pub pattern: Option<String>,
+    pub version: u32,
+    /// `brief` or `prompt`.
+    pub mode: String,
+    /// The rough prompt exactly as typed.
+    pub original: String,
+    /// The prompt as it landed in the draft, footer included: what the weekly
+    /// loop compares the owner's edits against.
+    pub rendered: String,
+    pub rewritten: bool,
+    /// Why there was no rewrite: `brief`, `no-pattern`, `offline`, `off`, or `failed: <reason>`.
+    #[serde(default)]
+    pub rewrite_skipped: Option<String>,
+    pub rewrite_model: Option<String>,
+    pub rewrite_effort: Option<String>,
+    /// The rewrite call alone.
+    pub rewrite_ms: Option<u64>,
+    /// The `render` command start to the prompt ready: the owner's wait after the last question.
+    pub wait_ms: u64,
+}
+
+fn log_path(id: &str) -> Result<PathBuf, String> {
+    if !valid_run_id(id) {
+        return Err(format!("`{id}` is not a run id"));
+    }
+    Ok(dir()?.join("log").join(format!("{id}.json")))
+}
+
+pub fn save_log(e: &LogEntry) -> Result<(), String> {
+    write_atomic(&log_path(&e.run)?, &serde_json::to_string_pretty(e).map_err(|e| e.to_string())?)
+}
+
+/// `Ok(None)` when the run has no log entry.
+pub fn load_log(id: &str) -> Result<Option<LogEntry>, String> {
+    let p = log_path(id)?;
+    let Ok(text) = std::fs::read_to_string(&p) else { return Ok(None) };
+    serde_json::from_str(&text).map(Some).map_err(|e| format!("{}: {e}", p.display()))
+}
+
+/// Every readable log entry, run-id order (oldest first).
+pub fn all_logs() -> Vec<LogEntry> {
+    let Ok(base) = dir() else { return vec![] };
+    let mut v: Vec<LogEntry> = std::fs::read_dir(base.join("log"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| std::fs::read_to_string(e.path()).ok())
+        .filter_map(|t| serde_json::from_str(&t).ok())
+        .collect();
+    v.sort_by(|a, b| a.run.cmp(&b.run));
+    v
 }
 
 pub fn pass_dir() -> Result<PathBuf, String> {

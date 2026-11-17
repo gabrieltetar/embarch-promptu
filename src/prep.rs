@@ -6,6 +6,7 @@ use crate::claude;
 use crate::config;
 use crate::pass::{self, Call, Sources};
 use crate::pattern::Set;
+use crate::rewrite;
 use crate::run::{self, Ctx, Flags, Item, Run};
 use crate::state;
 use serde_json::{json, Value};
@@ -558,6 +559,7 @@ pub fn next(run_id: &str, input: &Value) -> Result<Value, Fail> {
 }
 
 pub fn render(run_id: &str, input: &Value) -> Result<Value, Fail> {
+    let started = std::time::Instant::now();
     let set = Set::load().map_err(Fail::Usage)?;
     let mut run = state::load_run(run_id).map_err(Fail::Usage)?.ok_or_else(|| Fail::Usage(format!("no run `{run_id}`")))?;
     apply(input, &mut run, &set)?;
@@ -570,10 +572,64 @@ pub fn render(run_id: &str, input: &Value) -> Result<Value, Fail> {
         run.rest = Some("assume".into());
     }
     let table = config::table();
-    let r = run::render(&run, &set, &config::template_values(&table)).map_err(Fail::Other)?;
+    let mut r = run::render(&run, &set, &config::template_values(&table)).map_err(Fail::Other)?;
+    // The rewrite (decision 42). Never fatal: a failed call leaves the render.
+    let mut log = state::LogEntry {
+        promptu: 1,
+        run: run.run.clone(),
+        date: chrono::Local::now().to_rfc3339(),
+        cwd: run.cwd.clone(),
+        project_key: run.project_key.clone(),
+        pattern: run.pattern.clone(),
+        version: run.version,
+        mode: if run.brief { "brief" } else { "prompt" }.into(),
+        original: run.prompt.clone(),
+        ..Default::default()
+    };
+    let skip = if run.brief {
+        Some("brief")
+    } else if run.pattern.is_none() {
+        Some("no-pattern")
+    } else if run.offline {
+        Some("offline")
+    } else if !config::rewrite_enabled(&table) {
+        Some("off")
+    } else {
+        None
+    };
+    log.rewrite_skipped = skip.map(str::to_string);
+    if skip.is_none() {
+        let model = config::rewrite_model(&table);
+        let effort = config::rewrite_effort(&table);
+        let plan = r.prompt.strip_suffix(r.footer.as_str()).unwrap_or(&r.prompt).trim_end().to_string();
+        let answers = r.last.iter().map(|(k, (_, t))| (k.clone(), t.clone())).collect();
+        let c = Call {
+            claude: std::env::var("PROMPTU_CLAUDE").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "claude".into()),
+            model: model.clone(),
+            effort: effort.to_string(),
+            timeout: config::rewrite_timeout(&table),
+            cwd: state::pass_dir().unwrap_or_else(|_| std::env::temp_dir()),
+        };
+        log.rewrite_model = Some(model);
+        log.rewrite_effort = Some(effort.to_string());
+        match rewrite::call(&c, &rewrite::message(&run.prompt, &answers, &plan)) {
+            Ok((text, ms)) => {
+                let mut f = crate::footer::parse(&r.footer).unwrap_or_default();
+                f.extra.push(("rewritten".into(), "yes".into()));
+                r.footer = f.format();
+                r.prompt = format!("{text}\n\n{}", r.footer);
+                log.rewritten = true;
+                log.rewrite_ms = Some(ms);
+            }
+            Err(e) => log.rewrite_skipped = Some(format!("failed: {e}")),
+        }
+    }
+    log.rendered = r.prompt.clone();
+    log.wait_ms = started.elapsed().as_millis() as u64;
     // The prompt is the result: none of the writes below can fail it. A run
     // not saved only means a later render repeats this one's answers.
     let _ = state::save_run(&run);
+    let _ = state::save_log(&log);
     let draft = state::write_draft(&run.run, &r.prompt).ok();
     if let (Some(key), Some(p)) = (&run.project_key, run.pattern(&set)) {
         let answers = r.last.iter().map(|(k, (a, t))| (k.clone(), state::LastAnswer { answer: a.clone(), text: t.clone() })).collect();
@@ -586,6 +642,7 @@ pub fn render(run_id: &str, input: &Value) -> Result<Value, Fail> {
         "prompt": r.prompt,
         "footer": r.footer,
         "sections": r.sections,
+        "rewritten": log.rewritten,
     });
     if let Some(d) = draft {
         out["draft"] = json!(d.display().to_string());
