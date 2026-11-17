@@ -6,6 +6,7 @@
 //! docs/contract.md is the interface; embarch-doc's embarch-promptu/spec.md
 //! is current truth.
 
+mod calls;
 mod checks;
 mod claude;
 mod config;
@@ -98,6 +99,19 @@ enum Cmd {
         #[arg(long, value_delimiter = ',')]
         have: Vec<String>,
     },
+    /// Count a recorded session's tool calls and result characters per subagent and activity class.
+    Calls {
+        /// A session's `.jsonl` file, or its id (looked up under the Claude Code config home's projects/).
+        session: String,
+        /// Only this subagent (its id, or a prefix of it).
+        #[arg(long)]
+        subagent: Option<String>,
+        /// List this class's calls with their result sizes: git, build, config, source, other.
+        #[arg(long, value_parser = ["git", "build", "config", "source", "other"])]
+        class: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Check pattern files: schema, AskUserQuestion's limits, slots, examples (§7.7).
     Lint {
         /// Pattern files or a folder; none: the patterns this binary carries (or PROMPTU_PATTERNS).
@@ -140,6 +154,7 @@ fn main() {
                 Cmd::Memory { action: Some(MemoryAction::Check { paths, json }), .. } => check(&paths, json),
                 Cmd::Memory { action: None, json, no_used } => show_inventory(json, !no_used),
                 Cmd::Prep { pattern, rec, desk, offline, have, start, context_usage } => run_prep(prep::PrepArgs { pattern, rec, desk, offline, have, start, context_usage }),
+                Cmd::Calls { session, subagent, class, json } => run_calls(&session, subagent.as_deref(), class.as_deref(), json),
                 Cmd::Next { run } => run_next(&run),
                 Cmd::Render { run, rest, text } => run_render(&run, rest, text),
                 Cmd::Lint { paths, json, show, have } => run_lint(&paths, json, show, have),
@@ -178,6 +193,37 @@ fn debug_panic() {
 
 #[cfg(not(debug_assertions))]
 fn debug_panic() {}
+
+/// `promptu calls` (docs/contract.md §9): 0 printed, 2 no such session or subagent.
+fn run_calls(session: &str, subagent: Option<&str>, class: Option<&str>, json: bool) -> i32 {
+    let Some(path) = calls::find_session(session) else {
+        eprintln!("promptu: no session '{session}'");
+        return 2;
+    };
+    let threads = match calls::load(&path, subagent) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("promptu: {e}");
+            return 2;
+        }
+    };
+    if json {
+        let v: Vec<serde_json::Value> = threads
+            .iter()
+            .map(|t| {
+                let mut v = serde_json::to_value(t).unwrap_or_default();
+                if let Some(c) = class {
+                    v["calls"] = serde_json::to_value(t.list.iter().filter(|x| x.class == c).collect::<Vec<_>>()).unwrap_or_default();
+                }
+                v
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+    } else {
+        print!("{}", calls::render(&threads, class));
+    }
+    0
+}
 
 fn cwd() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))

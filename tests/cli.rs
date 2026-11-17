@@ -580,3 +580,55 @@ fn patterns_lists_the_task_patterns_for_a_picker() {
     let o = s.cmd(&s.root).arg("patterns").env("PROMPTU_PATTERNS", "/no/such/folder").output().unwrap();
     assert_eq!(o.status.code(), Some(2));
 }
+
+/// One synthetic call and its result, as two transcript lines.
+fn call_lines(id: &str, tool: &str, input: Value, result: &str) -> String {
+    format!(
+        "{}\n{}\n",
+        json!({"type":"assistant","message":{"content":[{"type":"tool_use","id":id,"name":tool,"input":input}]}}),
+        json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":id,"content":result}]}})
+    )
+}
+
+#[test]
+fn calls_counts_per_subagent_and_class_from_synthetic_transcripts() {
+    let s = Scratch::new("calls");
+    let proj = s.claude().join("projects/p");
+    let subs = proj.join("sess1/subagents");
+    std::fs::create_dir_all(&subs).unwrap();
+    std::fs::write(
+        proj.join("sess1.jsonl"),
+        call_lines("m1", "Read", json!({"file_path": "/w/src/a.rs"}), "abcde") + &call_lines("m2", "Bash", json!({"command": "cargo build"}), "ok"),
+    )
+    .unwrap();
+    std::fs::write(
+        subs.join("agent-abc123.jsonl"),
+        call_lines("s1", "Bash", json!({"command": "git log -3"}), "0123456789") + &call_lines("s2", "Read", json!({"file_path": "/w/app/prj.conf"}), "xy"),
+    )
+    .unwrap();
+    std::fs::write(subs.join("agent-abc123.meta.json"), r#"{"description":"review round"}"#).unwrap();
+
+    // By session id; the table has one row per thread and a total.
+    let o = s.cmd(&s.root).args(["calls", "sess1"]).output().unwrap();
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    let t = stdout(&o);
+    assert!(t.lines().any(|l| l.starts_with("main") && l.contains(" 2 ") && l.contains("7")), "{t}");
+    assert!(t.lines().any(|l| l.contains("abc123 review round") && l.contains("1/10")), "{t}");
+    assert!(t.lines().last().unwrap().starts_with("total") && t.contains("19"), "{t}");
+
+    // One class, one subagent: its calls with sizes.
+    let o = s.cmd(&s.root).args(["calls", "sess1", "--subagent", "abc", "--class", "git"]).output().unwrap();
+    let t = stdout(&o);
+    assert!(t.contains("[git]: 1 calls, 10 chars") && t.contains("10  Bash  git log -3"), "{t}");
+    assert!(!t.contains("cargo"), "{t}");
+
+    // JSON carries the same numbers.
+    let o = s.cmd(&s.root).args(["calls", "sess1", "--json"]).output().unwrap();
+    let v: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!(v[1]["by_class"]["config"], json!({"calls": 1, "result_chars": 2}));
+
+    let o = s.cmd(&s.root).args(["calls", "nope"]).output().unwrap();
+    assert_eq!(o.status.code(), Some(2));
+    let o = s.cmd(&s.root).args(["calls", "sess1", "--subagent", "zzz"]).output().unwrap();
+    assert_eq!(o.status.code(), Some(2));
+}

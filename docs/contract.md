@@ -567,3 +567,19 @@ One week's ✓/✕ sheet under the local learning-data folder:
 - **May grow:** new checks with new ids, new flags, new fields in any JSON document, new footer fields placed after `pick` (readers ignore unknown fields), new lint checks, new config keys, new sources.
 - **From step 3, fixed:** `used` and `used_claude_md`'s item shape and what counts as a use (§5), `promptu patterns`' JSON (§7.9), and `prep --start` with its output fields `start` and `pattern.start_default` (§7.8).
 - **Open until built:** §9–§10, within §0's rules.
+
+## 12. `promptu calls <session> [--subagent <id>] [--class <name>] [--json]`
+
+Read-only. `<session>` is a Claude Code session's `.jsonl`, or its id (looked up in `<config home>/projects/*/`). It reads that file (the main thread) and `<session>/subagents/*.jsonl`, each with the `description` of its `*.meta.json`. A `tool_use` is joined to its `tool_result` by id; a result's size is the characters of its text (a call with no result counts 0).
+
+Per thread (`main`, then each subagent by file name; `--subagent` keeps the ids that start with the given one and drops `main`): calls, result characters, and the same by class. Classes, first match wins, defined once in `src/calls.rs` (`classify`):
+
+| Class | Matches |
+|---|---|
+| `git` | Bash running `git log`, `git diff` or `git show` (global options allowed) |
+| `build` | Bash whose first word is `cargo`, `west`, `cmake`, `make`, `ninja`, `pytest`, `npm`, `gradle` or `tsc` |
+| `config` | any call whose path or command names `Kconfig*`, `*.dts`, `*.dtsi`, `*.overlay`, `*.conf`, `*.defconfig`, `west.yml`, `CMakeLists.txt` |
+| `source` | Read, Grep, Glob; Bash whose first word is `cat`, `grep`, `rg`, `sed`, `head`, `tail`, `ls`, `find`, `wc`, `awk`, `tree`, `nl` |
+| `other` | the rest |
+
+`--class <git|build|config|source|other>` lists that class's calls, one per line (`<chars>  <tool>  <command or path>`). `--json` prints an array of threads: `id`, `description`, `total`, `by_class` (`calls`, `result_chars`), and with `--class` a `calls` list. Exit 0; 2 for an unknown session or subagent. May grow: more classes, fields.
