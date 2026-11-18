@@ -630,3 +630,11 @@ Per thread (`main`, then each subagent by file name; `--subagent` keeps the ids 
 | `other` | the rest |
 
 `--class <git|build|config|source|other>` lists that class's calls, one per line (`<chars>  <tool>  <command or path>`). `--json` prints an array of threads: `id`, `description`, `total`, `by_class` (`calls`, `result_chars`), and with `--class` a `calls` list. Exit 0; 2 for an unknown session or subagent. May grow: more classes, fields.
+
+## 13. `promptu prior <prompt-file> [--projects <dir>] [--json]`
+
+Read-only: lists what the earlier runs of a prompt asked and were answered, so a rerun of an interview prompt does not ask again. `<prompt-file>` holds the prompt's text, or only its Promptu footer line. `--projects` is a Claude Code transcript folder (`projects/<encoded cwd>/`); the default is this project's folder under the config home (the same folder name `memory` uses). It reads the top-level `*.jsonl` of that one folder (never a subagent's) and writes nothing.
+
+**Match.** A transcript belongs to the prompt when its first user turn (the owner's own, not meta, not a sidechain) is the prompt: the text equal after `\r\n` folding and trimming; or, when the file is only a footer line, a first turn whose last non-empty line is that footer. The footer carries no run id, so the text is the match. A **near-match** (the first turn ends in the same footer under other text: the prompt edited) is not listed; the text view says how many on stderr and `--json` carries `near_matches`.
+
+**Output.** Sessions oldest first by the first turn's `timestamp`. Per session, each `AskUserQuestion` call in order: its questions (`question`, `header`, `options` as `label` and `description`, `multi_select`) and `answer`, the text of the `tool_result` with that call's `tool_use_id` (`null` when the session ended first). No other tool's output is read into it. `--json`: `{"sessions": [{"session", "started", "calls": [{"questions", "answer"}]}], "near_matches": n}`. Exit 0, also with no match; 2 for an unreadable prompt file or folder.

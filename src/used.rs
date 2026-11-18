@@ -73,7 +73,7 @@ fn record_date(v: &Value) -> Option<NaiveDate> {
 }
 
 /// The text of a message's content: a string, or its `text` blocks.
-fn texts(content: &Value) -> Vec<&str> {
+pub(crate) fn texts(content: &Value) -> Vec<&str> {
     match content {
         Value::String(s) => vec![s.as_str()],
         Value::Array(a) => a.iter().filter(|b| b.get("type").and_then(Value::as_str) == Some("text")).filter_map(|b| b.get("text").and_then(Value::as_str)).collect(),

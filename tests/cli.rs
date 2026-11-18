@@ -632,3 +632,44 @@ fn calls_counts_per_subagent_and_class_from_synthetic_transcripts() {
     let o = s.cmd(&s.root).args(["calls", "sess1", "--subagent", "zzz"]).output().unwrap();
     assert_eq!(o.status.code(), Some(2));
 }
+
+#[test]
+fn prior_lists_an_earlier_runs_questions_and_answers_and_writes_nothing() {
+    let s = Scratch::new("prior");
+    let repo = s.repo("app");
+    let prompt = "## Goal\ninterview me\n\n— promptu research-explain@1 asked=a:rec";
+    let dir = s.claude().join("projects/-x-app");
+    std::fs::create_dir_all(&dir).unwrap();
+    let ask = json!([{"type": "tool_use", "id": "t1", "name": "AskUserQuestion", "input": {"questions": [{"question": "Which board?", "header": "Board", "multiSelect": false, "options": [{"label": "A", "description": "a"}, {"label": "B", "description": "b"}]}]}}]);
+    let mine = [
+        record("user", &repo, "2026-11-01T10:00:00Z", json!(prompt), json!({})),
+        record("assistant", &repo, "2026-11-01T10:01:00Z", ask, json!({})),
+        record("user", &repo, "2026-11-01T10:02:00Z", json!([{"type": "tool_result", "tool_use_id": "t1", "content": "User answered: Which board?=B"}]), json!({})),
+    ];
+    std::fs::write(dir.join("mine.jsonl"), mine.join("\n") + "\n").unwrap();
+    // Another prompt's session, with its own question: not listed.
+    let other = [record("user", &repo, "2026-11-02T10:00:00Z", json!("## Goal\nfix a bug\n\n— promptu debug-failure@1"), json!({})), record("assistant", &repo, "2026-11-02T10:01:00Z", json!([{"type": "tool_use", "id": "t9", "name": "AskUserQuestion", "input": {"questions": [{"question": "LEAKED?", "options": []}]}}]), json!({}))];
+    std::fs::write(dir.join("other.jsonl"), other.join("\n") + "\n").unwrap();
+    let pf = s.root.join("prompt.md");
+    std::fs::write(&pf, prompt).unwrap();
+    let before: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| (e.file_name(), std::fs::metadata(e.path()).unwrap().len())).collect();
+
+    let o = s.cmd(&repo).arg("prior").arg(&pf).arg("--projects").arg(&dir).arg("--json").output().unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+    let v: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!(v["sessions"].as_array().unwrap().len(), 1);
+    assert_eq!(v["sessions"][0]["session"], "mine");
+    assert_eq!(v["sessions"][0]["calls"][0]["questions"][0]["options"][1]["label"], "B");
+    assert_eq!(v["sessions"][0]["calls"][0]["answer"], "User answered: Which board?=B");
+    assert!(!String::from_utf8_lossy(&o.stdout).contains("LEAKED"));
+    // The default folder is this project's under the config home.
+    let o = s.cmd(&repo).arg("prior").arg(&pf).output().unwrap();
+    assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
+    // The text view; a missing folder is exit 2.
+    let o = s.cmd(&repo).arg("prior").arg(&pf).arg("--projects").arg(&dir).output().unwrap();
+    assert!(stdout(&o).contains("answer: User answered: Which board?=B"), "{}", stdout(&o));
+    let o = s.cmd(&repo).arg("prior").arg(&pf).arg("--projects").arg(s.root.join("nope")).output().unwrap();
+    assert_eq!(o.status.code(), Some(2));
+    let after: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| (e.file_name(), std::fs::metadata(e.path()).unwrap().len())).collect();
+    assert_eq!(before, after);
+}

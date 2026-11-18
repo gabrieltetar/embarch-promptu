@@ -18,6 +18,7 @@ mod lint;
 mod mustache;
 mod pass;
 mod pattern;
+mod prior;
 mod prep;
 mod rewrite;
 mod run;
@@ -129,6 +130,16 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// What the earlier runs of a prompt asked (AskUserQuestion) and were answered, from a transcript folder (read-only).
+    Prior {
+        /// The prompt: a file holding its text, or only its Promptu footer line.
+        prompt: PathBuf,
+        /// A Claude Code transcript folder (`projects/<encoded cwd>/`); default: this project's, under the config home.
+        #[arg(long)]
+        projects: Option<PathBuf>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Check pattern files: schema, AskUserQuestion's limits, slots, examples (§7.7).
     Lint {
         /// Pattern files or a folder; none: the patterns this binary carries (or PROMPTU_PATTERNS).
@@ -172,6 +183,7 @@ fn main() {
                 Cmd::Memory { action: None, json, no_used } => show_inventory(json, !no_used),
                 Cmd::Prep { pattern, rec, desk, offline, have, start, context_usage } => run_prep(prep::PrepArgs { pattern, rec, desk, offline, have, start, context_usage }),
                 Cmd::Calls { session, subagent, class, json } => run_calls(&session, subagent.as_deref(), class.as_deref(), json),
+                Cmd::Prior { prompt, projects, json } => run_prior(&prompt, projects.as_deref(), json),
                 Cmd::Next { run } => run_next(&run),
                 Cmd::Render { run, rest, text } => run_render(&run, rest, text),
                 Cmd::Original { run, json } => run_original(&run, json),
@@ -240,6 +252,49 @@ fn run_calls(session: &str, subagent: Option<&str>, class: Option<&str>, json: b
         println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
     } else {
         print!("{}", calls::render(&threads, class));
+    }
+    0
+}
+
+fn run_prior(prompt: &Path, projects: Option<&Path>, json: bool) -> i32 {
+    let text = match std::fs::read_to_string(prompt) {
+        Ok(t) if !t.trim().is_empty() => t,
+        Ok(_) => {
+            eprintln!("promptu: {} is empty", prompt.display());
+            return 2;
+        }
+        Err(e) => {
+            eprintln!("promptu: {}: {e}", prompt.display());
+            return 2;
+        }
+    };
+    let folder = match projects {
+        Some(p) => p.to_path_buf(),
+        None => match claude::config_dir() {
+            Some(c) => c.join("projects").join(claude::project_folder(&claude::project_root(&cwd()).to_string_lossy())),
+            None => {
+                eprintln!("promptu: no Claude Code config folder; pass --projects");
+                return 2;
+            }
+        },
+    };
+    let prior = match prior::scan(&folder, &text) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("promptu: {e}");
+            return 2;
+        }
+    };
+    if json {
+        println!("{}", serde_json::to_string_pretty(&prior).unwrap_or_default());
+    } else {
+        print!("{}", prior::render(&prior));
+        if prior.sessions.is_empty() {
+            println!("no earlier run of this prompt");
+        }
+        if prior.near_matches > 0 {
+            eprintln!("promptu: {} session(s) ended in the same footer under other text, not listed", prior.near_matches);
+        }
     }
     0
 }
