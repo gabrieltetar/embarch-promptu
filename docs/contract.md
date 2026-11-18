@@ -69,7 +69,7 @@ The file opens with a `---` block. It is read the way Claude Code reads it [meas
 
 ```json
 { "hooks": {
-  "PreToolUse":  [ { "matcher": "Write|Edit|MultiEdit", "hooks": [ { "type": "command", "command": "promptu hook", "timeout": 5 } ] } ],
+  "PreToolUse":  [ { "matcher": "Write|Edit|MultiEdit|Bash", "hooks": [ { "type": "command", "command": "promptu hook", "timeout": 5 } ] } ],
   "PostToolUse": [ { "matcher": "Write|Edit|MultiEdit", "hooks": [ { "type": "command", "command": "promptu hook", "timeout": 5 } ] } ]
 } }
 ```
@@ -83,10 +83,11 @@ Claude Code's hook JSON on stdin [measured]. The hook reads only these fields an
 | Field | Use |
 |---|---|
 | `hook_event_name` | `PreToolUse` or `PostToolUse`; anything else is ignored. |
-| `tool_name` | `Write`, `Edit` or `MultiEdit`; anything else is ignored. |
+| `tool_name` | `Write`, `Edit` or `MultiEdit`; `Bash` on PreToolUse only (§3.3a); anything else is ignored. |
 | `tool_input.file_path` | The target; relative paths resolve against `cwd`. |
 | `tool_input.content` | Write. |
 | `tool_input.old_string`, `new_string`, `replace_all` | Edit. |
+| `tool_input.command` | Bash (§3.3a). |
 | `tool_input.edits[]` | MultiEdit: the same three fields per edit, applied in order. |
 | `cwd` | For §1.2's overrides and relative paths. |
 
@@ -99,6 +100,10 @@ Input over 16 MiB is not read whole and does not parse, so the write goes ahead 
 3. **After:** Write's `content`; or Edit applied to Before (exactly one match of `old_string`, or every match with `replace_all`; an empty `old_string` creates a missing file); or MultiEdit's edits applied in order. An edit that would not apply is one Claude Code refuses itself: silent.
 4. `MEMORY.md` gets I1–I5 on After against Before; a topic file gets T1–T7.
 5. **Touched lines:** a line of After is untouched when an equal line of Before is left to match it, and touched otherwise. When the file is created, every line is touched.
+
+### 3.3a A shell write to a memory index
+
+The index checks need the file as a write leaves it, which a shell command does not state. So a **PreToolUse on Bash** only warns, and names Edit as the checked route. It speaks when the command (1) names a path ending `MEMORY.md` that §1.2 resolves to a memory folder (`~/`, `$HOME/` and relative paths are expanded; the resolution is `claude::memory_target`, the same as a Write's) and (2) looks like a write: a `>` redirect other than `2>&1` or `> /dev/null`, one of `tee mv cp sed perl truncate install dd ed`, or the text `write`, `open(` or `fs.`. The reply is `additionalContext` in every mode: **a Bash command is never refused**, block mode included. A command that only reads (`cat`, `grep`, `wc`, `head`) gets nothing, as does one naming a `MEMORY.md` outside a memory folder or a topic file. It is a heuristic: a script that builds the path at run time, or a command that never names the index, is not seen, and a read that quotes `>` or `write` costs one warning. PostToolUse on Bash is not registered.
 
 ### 3.4 The checks
 

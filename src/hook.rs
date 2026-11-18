@@ -9,6 +9,10 @@
 //! only warnings through. **PostToolUse** on a `MEMORY.md` write: name the
 //! topic files the index no longer links (O1), warn only.
 //!
+//! **PreToolUse** on a Bash command that looks like it writes a memory index:
+//! the index checks cannot run on free text, so the hook warns (never refuses)
+//! and names Edit as the checked route. A command that only reads gets nothing.
+//!
 //! **It fails open.** Bad input, an unreadable file, an edit that would not
 //! apply, a panic: exit 0 and print nothing, so the write goes ahead exactly
 //! as it would without the plugin. No model, no network.
@@ -66,6 +70,9 @@ pub fn respond(ev: &Value, mode: HookMode, today: NaiveDate) -> Option<Reply> {
     }
     let event = ev["hook_event_name"].as_str()?;
     let tool = ev["tool_name"].as_str()?;
+    if tool == "Bash" {
+        return if event == "PreToolUse" { bash(ev) } else { None };
+    }
     if !WRITE_TOOLS.contains(&tool) {
         return None;
     }
@@ -79,6 +86,56 @@ pub fn respond(ev: &Value, mode: HookMode, today: NaiveDate) -> Option<Reply> {
         "PostToolUse" if target.is_index => post(&path, &target),
         _ => None,
     }
+}
+
+/// Words and marks that make a shell command more than a read of a file.
+const WRITE_WORDS: [&str; 9] = ["tee", "mv", "cp", "sed", "perl", "truncate", "install", "dd", "ed"];
+
+/// Does the command look like it writes (a redirect, or a command that does)?
+/// A heuristic on free text: a false positive costs one warning.
+fn looks_like_write(cmd: &str) -> bool {
+    let seps = |c: char| c.is_whitespace() || "\"'`;|&()<>=,".contains(c);
+    let redirect = cmd.replace("2>&1", "").replace(">/dev/null", "").replace("> /dev/null", "").contains('>');
+    redirect
+        || cmd.split(seps).any(|w| WRITE_WORDS.contains(&w))
+        || cmd.contains("write")
+        || cmd.contains("open(")
+        || cmd.contains("fs.")
+}
+
+/// The memory indexes a Bash command names, resolved the way a Write's
+/// `file_path` is (`claude::memory_target`).
+fn named_indexes(cmd: &str, cwd: Option<&Path>) -> Vec<claude::Target> {
+    let home = std::env::var("HOME").ok();
+    let seps = |c: char| c.is_whitespace() || "\"'`;|&()<>=,".contains(c);
+    let mut out: Vec<claude::Target> = vec![];
+    for tok in cmd.split(seps).filter(|t| t.ends_with("MEMORY.md")) {
+        let expanded = match (&home, tok.strip_prefix("~/").or_else(|| tok.strip_prefix("$HOME/")).or_else(|| tok.strip_prefix("${HOME}/"))) {
+            (Some(h), Some(rest)) => format!("{h}/{rest}"),
+            _ => tok.to_string(),
+        };
+        if let Some(t) = claude::memory_target(&expanded, cwd) {
+            if t.is_index && !out.contains(&t) {
+                out.push(t);
+            }
+        }
+    }
+    out
+}
+
+fn bash(ev: &Value) -> Option<Reply> {
+    let cmd = ev["tool_input"]["command"].as_str()?;
+    if !cmd.contains("MEMORY.md") || !looks_like_write(cmd) {
+        return None;
+    }
+    let cwd = ev["cwd"].as_str().map(PathBuf::from).or_else(|| std::env::current_dir().ok());
+    let found = named_indexes(cmd, cwd.as_deref());
+    let first = found.first()?;
+    let text = format!(
+        "Promptu: this Bash command looks like it writes the memory index {}. A shell write skips the index checks (line length, domain header, one line per file). It goes ahead; write index lines with the Edit tool instead, which is checked, and re-read the file after this command.",
+        first.dir.join(&first.name).display()
+    );
+    Some(Reply::Context(context("PreToolUse", &text)))
 }
 
 fn pre(tool: &str, input: &Value, path: &Path, target: &claude::Target, mode: HookMode, today: NaiveDate) -> Option<Reply> {
@@ -203,6 +260,16 @@ mod tests {
         assert_eq!(after_write("MultiEdit", &multi, Some("a.b")).as_deref(), Some("c.c"));
         assert_eq!(after_write("Write", &json!({ "content": "x" }), None).as_deref(), Some("x"));
         assert_eq!(after_write("NotebookEdit", &json!({}), None), None);
+    }
+
+    #[test]
+    fn write_heuristic_separates_reads_from_writes() {
+        for w in ["echo '- x' >> MEMORY.md", "sed -i 's/a/b/' MEMORY.md", "python3 -c \"open('MEMORY.md','w').write(t)\"", "cp /tmp/x MEMORY.md", "cat x | tee MEMORY.md"] {
+            assert!(looks_like_write(w), "{w}");
+        }
+        for r in ["cat MEMORY.md", "grep -n tooling MEMORY.md 2>&1", "wc -l MEMORY.md > /dev/null", "head -5 MEMORY.md; ls"] {
+            assert!(!looks_like_write(r), "{r}");
+        }
     }
 
     #[test]

@@ -673,3 +673,27 @@ fn prior_lists_an_earlier_runs_questions_and_answers_and_writes_nothing() {
     let after: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| (e.file_name(), std::fs::metadata(e.path()).unwrap().len())).collect();
     assert_eq!(before, after);
 }
+
+#[test]
+fn a_shell_write_to_a_memory_index_warns_and_names_edit_and_a_read_is_silent() {
+    let s = Scratch::new("bash");
+    let dir = s.seed(&s.repo("app"));
+    let idx = dir.join("MEMORY.md");
+    let bash = |cmd: String| {
+        let mut ev = pre("Bash", &idx, json!({ "command": cmd }));
+        ev["tool_input"].as_object_mut().unwrap().remove("file_path");
+        ev
+    };
+    let i = idx.display();
+    for cmd in [format!("python3 -c \"open('{i}','w').write('x')\""), format!("echo '- [a](a.md) — b' >> {i}"), format!("sed -i 's/a/b/' {i}")] {
+        let ctx = context(&s.hook(&bash(cmd.clone())), "PreToolUse");
+        assert!(ctx.contains("Edit tool"), "{cmd}: {ctx}");
+    }
+    // Block mode still never refuses a Bash command.
+    s.mode("block");
+    assert!(context(&s.hook(&bash(format!("echo x >> {i}"))), "PreToolUse").contains("Edit tool"));
+    // Reads, and writes elsewhere, get nothing.
+    for cmd in [format!("cat {i}"), format!("grep -n tooling {i} 2>&1"), format!("wc -l {i} > /dev/null"), "echo x >> /tmp/MEMORY.md".to_string(), format!("echo x >> {}", dir.join("soak-test.md").display())] {
+        silent(&s.hook(&bash(cmd)));
+    }
+}
