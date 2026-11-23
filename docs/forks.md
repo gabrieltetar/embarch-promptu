@@ -49,7 +49,9 @@ I3 refuses a `## ` header the index did not have. A project with no `MEMORY.md` 
 - **(b) Headers are free when the index is created, and checked from then on.**
 - (c) Seed new indexes from a per-machine default domain list in `config.toml`.
 
-### F5. Writes the hook cannot see
+### F5. Writes the hook cannot see — decided: (a)
+
+**Decided by the owner, 2026-11-23: (a).** As built: `promptu memory check` and the menu's flags show the result afterwards; (c) if the weekly sheet ever shows a bypass.
 
 The hook sees Write, Edit and MultiEdit. A shell redirect, `sed -i`, `cp` or `mv` into a memory folder goes unchecked (a rename by `mv` is the case the memory test found).
 
@@ -299,7 +301,9 @@ SYNTHESIS §12 seeded "Ctrl+Shift+Enter runs the pass", to check against VS Code
 
 **Recommendation: (a).**
 
-### P12. One pass per task start
+### P12. One pass per task start — decided: (a)
+
+**Decided by the owner, 2026-11-23: (a).** As built.
 
 After a pass ran, failed or was skipped, the next Enter sends, even if the owner clears the draft and types a new first prompt.
 
@@ -329,7 +333,9 @@ SYNTHESIS §2.4 has a "Pre-filled (n)" strip whose values can be changed (record
 
 **Recommendation: (a)**: the 💡 and Promptu work on the draft, so they sit by it.
 
-### P15. Smaller choices made while building
+### P15. Smaller choices made while building — decided: accepted as built
+
+**Decided by the owner, 2026-11-23: all seven stand as built.** The step 3 review loop may still flag any one of them.
 
 - `--pattern` with `--start`: the pattern wins, even a `never` one.
 - A transcript whose folder no longer exists (a removed worktree) counts only when its path is under the main checkout, so its uses are lost.
