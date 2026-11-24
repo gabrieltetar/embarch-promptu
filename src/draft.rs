@@ -384,7 +384,7 @@ fn numbers(events: &[Value], previous: Option<&Value>) -> Vec<Value> {
 pub fn sheet_md(sheet: &Value) -> String {
     let n = sheet["groups"].as_array().into_iter().flatten().flat_map(|g| g["lines"].as_array().into_iter().flatten()).count();
     let mut out = format!(
-        "# Promptu sheet {}\n\nGenerated {}, {n} line(s). Read-only: mark lines with `promptu week mark`; editing this file changes nothing.\n",
+        "# Promptu sheet {}\n\nGenerated {}, {n} line(s). Mark lines with `promptu week mark`, or change a box to [ ] (a cut) or write a note under a line; `promptu week apply` reads both back.\n",
         sheet["week"].as_str().unwrap_or(""),
         sheet["generated"].as_str().unwrap_or("")
     );
@@ -411,6 +411,9 @@ pub fn sheet_md(sheet: &Value) -> String {
             out.push('\n');
             if let Some(p) = l["proposed"].as_str() {
                 out.push_str(&format!("  - proposed: {p}\n"));
+            }
+            if let Some(n) = l["note"].as_str().filter(|n| !n.is_empty()) {
+                out.push_str(&format!("  - note: {n}\n"));
             }
         }
     }

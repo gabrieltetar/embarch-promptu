@@ -27,6 +27,7 @@ mod state;
 mod used;
 mod draft;
 mod week;
+mod weekapply;
 mod weekread;
 mod weeksession;
 
@@ -206,6 +207,36 @@ enum WeekAction {
         #[arg(long)]
         json: bool,
     },
+    /// Record a verdict on a line or group, a note, or the week's feel (§14.4). Rewrites `sheet.json` and `sheet.md`.
+    Mark {
+        /// Line ids (`l1`) or group ids (`g1`).
+        ids: Vec<String>,
+        /// `approve` or `cut` (default `cut`).
+        #[arg(long)]
+        verdict: Option<String>,
+        /// A note for the line.
+        #[arg(long)]
+        note: Option<String>,
+        /// How the week felt: `better`, `same` or `worse`.
+        #[arg(long)]
+        feel: Option<String>,
+        /// An ISO week `YYYY-Www`; default: the open sheet.
+        #[arg(long)]
+        week: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Apply every approved line: memory lines into the memory folder, pattern lines as a commit on a branch or a patch (§14.4). Never pushes.
+    Apply {
+        /// An ISO week `YYYY-Www`; default: the open sheet.
+        #[arg(long)]
+        week: Option<String>,
+        /// Run the checks on a temporary copy and write nothing.
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -241,6 +272,8 @@ fn main() {
                 Cmd::Week { action: WeekAction::Draft { week, pack, json } } => run_week_draft(week, pack, json),
                 Cmd::Week { action: WeekAction::Status { json } } => run_week_status(json),
                 Cmd::Week { action: WeekAction::Show { week, json } } => run_week_show(week.as_deref(), json),
+                Cmd::Week { action: WeekAction::Mark { ids, verdict, note, feel, week, json } } => run_week_mark(weekapply::MarkArgs { ids, verdict, note, feel, week }, json),
+                Cmd::Week { action: WeekAction::Apply { week, dry_run, json } } => run_week_apply(weekapply::ApplyArgs { week, dry_run }, json),
                 Cmd::Desk { json } => run_desk(json),
                 Cmd::Next { run } => run_next(&run),
                 Cmd::Render { run, rest, text } => run_render(&run, rest, text),
@@ -371,6 +404,31 @@ fn run_week_show(week: Option<&str>, json: bool) -> i32 {
         Ok(t) => {
             print!("{t}");
             0
+        }
+        Err(e) => {
+            eprintln!("promptu: {}", e.msg);
+            e.code
+        }
+    }
+}
+
+/// `promptu week mark` (§14.4): 0, 2 an unknown id, a settled week or a superseded sheet.
+fn run_week_mark(args: weekapply::MarkArgs, json: bool) -> i32 {
+    debug_panic();
+    print_read(weekapply::mark(&args), json, weekapply::mark_text)
+}
+
+/// `promptu week apply` (§14.4): 0 no line failed, 1 one did, 2 no open sheet.
+fn run_week_apply(args: weekapply::ApplyArgs, json: bool) -> i32 {
+    debug_panic();
+    match weekapply::apply(&args) {
+        Ok((v, code)) => {
+            if json {
+                println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+            } else {
+                print!("{}", weekapply::apply_text(&v));
+            }
+            code
         }
         Err(e) => {
             eprintln!("promptu: {}", e.msg);

@@ -435,9 +435,9 @@ Decision 43 settles pattern lines. A memory line changes a file Claude Code read
 - (b) Written to `proposed/` and left for the owner to move by hand: nothing reaches memory unseen, and nothing learnt is applied without a second step.
 - (c) Offered as a prompt to Claude in the project, which writes it under the `CLAUDE.md` labels rule.
 
-**Recommendation: (a).** A ✓ on a sheet is already the review; (b) is the step decision 43 rejected for patterns ("leaves nothing learnt reaching a pattern").
+**Recommendation: (a).** Built as (a): both files are checked before either is written, an existing topic file and `MEMORY.md` are copied to `week/<week>/backup/<project>/` first (once per apply, never over an earlier backup), the project's `projects/<project>/` folder must already exist, and an index with no `## ` header gets `## promptu` above the line (the I2 check wants every touched line under one). A ✓ on a sheet is already the review; (b) is the step decision 43 rejected for patterns ("leaves nothing learnt reaching a pattern").
 
-### W5. Is `sheet.md` an input — open
+### W5. Is `sheet.md` an input — open, built on a default (EMB-279)
 
 Decision 30 says the sheet is "a Markdown file applied with `promptu week apply`".
 
@@ -445,6 +445,8 @@ Decision 30 says the sheet is "a Markdown file applied with `promptu week apply`
 - (b) The owner edits the `- [x]` boxes in `sheet.md`, and `apply` reads them. Matches decision 30's wording, but needs a merge when the Desk and the file disagree.
 
 **Recommendation: (a)**, with (b) added later as a reader of the boxes into `mark`, if the owner wants to edit in a text editor.
+
+**As built (EMB-279):** (a) with (b)'s reader, one way. `mark` and `apply` first read `sheet.md` back into `sheet.json`: a box that is not `[x]` on an `open` or `failed` approved line cuts it, and the indented text under a line (rendered as `  - note: …`) replaces its note. A `[x]` on a line `sheet.json` has cut never approves it: only `mark --verdict approve` does, so the Desk and the file cannot fight over a reversal. `sheet.json` stays the one record.
 
 ### W6. The drafter's limits — open
 
@@ -551,3 +553,22 @@ EMB-274 built the session events. The contract tied a commit to a session throug
 - (c) Both, the union by hash.
 
 **Recommendation: (a)**, then compare with (b) on one real week. The commits the owner makes himself are not a pattern's outcome. The sessions of projects with no run are kept because decision 15's control group is exactly the sessions that did not start with Promptu.
+
+### W17. What an apply does to the checkout and to several lines of one pattern — open
+
+Decision 43 says one commit per line, and the contract says `apply` checks out the branch. Two things it leaves open: a pattern's file is whole, so two lines for one pattern cannot be committed separately; and `apply` switches the owner's checkout to the week's branch.
+
+- **(a) One commit per changed pattern, carrying every approved line for it (its message names the line ids; each line records that SHA), and the owner's original branch checked out again when `apply` ends** — *provisional default.* The version is bumped once per apply, the file changes once, and the owner's working branch is where he left it.
+- (b) One commit per line, the later lines of a pattern empty or rejected: the version would bump twice for one file.
+- (c) Leave the checkout on `promptu/week-<week>`: the owner sees the result at once, but his next edit lands on the wrong branch.
+
+**Recommendation: (a).** `--dry-run` runs the same steps on a `git archive` copy of `HEAD` in a temporary folder, so a dry run never touches the checkout or its branches. A pattern line that names a pattern the checkout does not hold is a new file with version `max(1, its own)`.
+
+### W18. Marking an `external` line applied — open
+
+Contract §10 says an `external` line is `applied` only when the owner marks it so with `week mark`, and §14.4 says marking a line `applied` is refused.
+
+- **(a) `mark` refuses `applied`; an `external` line stays `open` until cut, and a sheet with one never settles** — *provisional default.* The two sentences agree on exit 2, and nothing is done by Promptu for an `external` line.
+- (b) `mark --verdict done` for `external` lines only, setting `applied`: matches §10, adds a verdict.
+
+**Recommendation: (b)** when the Desk's section needs to clear an `external` line; (a) until then.

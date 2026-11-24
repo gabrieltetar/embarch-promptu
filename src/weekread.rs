@@ -29,7 +29,7 @@ fn now() -> DateTime<Local> {
         .unwrap_or_else(Local::now)
 }
 
-fn week_dir() -> Result<PathBuf, Fail> {
+pub(crate) fn week_dir() -> Result<PathBuf, Fail> {
     Ok(state::dir().map_err(|e| fail(3, e))?.join("week"))
 }
 
@@ -51,7 +51,7 @@ fn weeks() -> Result<Vec<String>, Fail> {
     Ok(v)
 }
 
-fn read_json(path: &std::path::Path) -> Result<Option<Value>, Fail> {
+pub(crate) fn read_json(path: &std::path::Path) -> Result<Option<Value>, Fail> {
     let Ok(text) = std::fs::read_to_string(path) else { return Ok(None) };
     serde_json::from_str(&text).map(Some).map_err(|e| fail(3, format!("{}: {e}", path.display())))
 }
