@@ -348,3 +348,120 @@ fn a_bad_week_or_a_missing_pack_is_a_usage_error() {
     let o = s.draft(&["--pack", "/nonexistent/pack.json"], &[]);
     assert_eq!(o.status.code(), Some(2));
 }
+
+// ---- the replay of a proposed pattern (decision 47, forks W23, W24) ----
+
+/// A log entry of a run of `handoff`, as `render` writes it.
+fn write_log(s: &Scratch, run: &str, pattern: &str, mode: &str, original: &str) {
+    let dir = s.state().join("log");
+    std::fs::create_dir_all(&dir).unwrap();
+    let e = json!({ "promptu": 1, "run": run, "date": "2026-11-18T09:00:00+00:00", "cwd": "/x", "project_key": null, "pattern": pattern, "version": 1, "mode": mode,
+        "original": original, "rendered": "r", "rewritten": false, "rewrite_skipped": null, "rewrite_model": null, "rewrite_effort": null, "rewrite_ms": null, "wait_ms": 0 });
+    std::fs::write(dir.join(format!("{run}.json")), e.to_string()).unwrap();
+}
+
+fn logs(s: &Scratch) {
+    write_log(s, "20251118-091500-aaaa", "handoff", "prompt", "hand this to a colleague, secret-one");
+    write_log(s, "20251118-101500-bbbb", "handoff", "prompt", "hand this off, secret-two");
+    write_log(s, "20251118-111500-cccc", "handoff", "prompt", "write a handoff, secret-three");
+    write_log(s, "20251118-121500-dddd", "implement-issue", "prompt", "other pattern, secret-four");
+    write_log(s, "20251118-131500-eeee", "handoff", "brief", "a pasted brief, secret-five");
+}
+
+fn question_line() -> Value {
+    json!({ "kind": "pattern", "events": ["e1", "e2"], "target": { "kind": "question", "pattern": "handoff", "question": "reader" }, "change": "reword why", "text": "ask `reader` every time" })
+}
+
+fn replay_reply(s: &Scratch, line: Value, file: String) {
+    s.reply(json!({ "lines": [line], "patterns": { "handoff": file }, "pattern": "handoff", "confidence": 0.9 }));
+}
+
+fn first_line(s: &Scratch) -> Value {
+    lines(&s.sheet()).into_iter().find(|l| l["kind"] == "pattern").unwrap()
+}
+
+#[test]
+fn a_question_change_is_replayed_on_past_prompts_old_against_new() {
+    let s = Scratch::new("replay");
+    s.pack();
+    logs(&s);
+    std::fs::write(s.root.join("cfg/config.toml"), "week_replay_cap_usd = 100\n").unwrap();
+    replay_reply(&s, question_line(), good_handoff());
+    let o = s.draft(&[], &[]);
+    assert_eq!(o.status.code(), Some(0), "{}", String::from_utf8_lossy(&o.stderr));
+    let l = first_line(&s);
+    let replay = l["check"]["replay"].as_array().unwrap();
+    // The three rough prompts of the pattern, newest first; not the brief, not the other pattern.
+    let runs: Vec<&str> = replay.iter().map(|r| r["run"].as_str().unwrap()).collect();
+    assert_eq!(runs, ["20251118-111500-cccc", "20251118-101500-bbbb", "20251118-091500-aaaa"]);
+    assert!(l["check"]["replay_note"].is_null());
+    for r in replay {
+        let f = r["file"].as_str().unwrap();
+        assert_eq!(f, format!("replay/handoff/{}.md", r["run"].as_str().unwrap()));
+        let text = std::fs::read_to_string(s.week().join(f)).unwrap();
+        assert!(text.contains("| picked | handoff | handoff |") && text.contains("| questions asked |") && text.contains("> "), "{text}");
+        assert!(r["questions_before"].as_u64().is_some() && r["questions_after"].as_u64().is_some());
+    }
+    assert!(std::fs::read_to_string(s.week().join("replay/handoff/20251118-091500-aaaa.md")).unwrap().contains("secret-one"));
+    let md = std::fs::read_to_string(s.week().join("sheet.md")).unwrap();
+    assert!(md.contains("  - replay: replay/handoff/20251118-111500-cccc.md, "), "{md}");
+    // The replay's file is a pointer, not a note: `week apply` must not read it as one.
+    // Nothing is written outside the state folder and the fake's own folder.
+    for d in ["home", "claude", "cfg"] {
+        let n = std::fs::read_dir(s.root.join(d)).unwrap().flatten().filter(|e| d != "cfg" || e.file_name() != "config.toml").count();
+        assert!(n == 0 || d == "claude", "{d} was written to");
+    }
+}
+
+#[test]
+fn a_template_only_change_is_not_replayed() {
+    let s = Scratch::new("replay-template");
+    s.pack();
+    logs(&s);
+    std::fs::write(s.root.join("cfg/config.toml"), "week_replay_cap_usd = 100\n").unwrap();
+    let body_only = format!("{HANDOFF}\nOne more line of the template.\n");
+    let line = json!({ "kind": "pattern", "events": ["e1"], "target": { "kind": "template", "pattern": "handoff", "question": "" }, "change": "add a line", "text": "add a line" });
+    replay_reply(&s, line, body_only);
+    let o = s.draft(&[], &[]);
+    assert_eq!(o.status.code(), Some(0), "{}", String::from_utf8_lossy(&o.stderr));
+    let l = first_line(&s);
+    assert_eq!(l["check"]["replay"], json!([]));
+    assert!(l["check"]["replay_note"].as_str().unwrap().contains("nothing to replay"), "{l}");
+    assert!(!s.week().join("replay").exists());
+    // One model call only: the drafter's.
+    assert!(!s.fake("stdin.txt").contains("<regex_hint>"));
+}
+
+#[test]
+fn the_cap_stops_the_replay_and_the_line_says_so() {
+    let s = Scratch::new("replay-cap");
+    s.pack();
+    logs(&s);
+    // The fake reports $1.25 a call: one prompt (two calls) is $2.50, over a $1 cap.
+    std::fs::write(s.root.join("cfg/config.toml"), "week_replay_cap_usd = 1\n").unwrap();
+    replay_reply(&s, question_line(), good_handoff());
+    assert_eq!(s.draft(&[], &[]).status.code(), Some(0));
+    let l = first_line(&s);
+    assert_eq!(l["check"]["replay"].as_array().unwrap().len(), 1);
+    let note = l["check"]["replay_note"].as_str().unwrap();
+    assert!(note.contains("stopped by the replay cap of $1.00") && note.contains("1 of 3"), "{note}");
+    let md = std::fs::read_to_string(s.week().join("sheet.md")).unwrap();
+    assert!(md.contains("  - replay: stopped by the replay cap"), "{md}");
+    // A cap of 0 turns the replay off.
+    std::fs::write(s.root.join("cfg/config.toml"), "week_replay_cap_usd = 0\n").unwrap();
+    assert_eq!(s.draft(&[], &[]).status.code(), Some(0));
+    let l = first_line(&s);
+    assert_eq!(l["check"]["replay"], json!([]));
+    assert!(l["check"]["replay_note"].as_str().unwrap().contains("0 of 3"));
+}
+
+#[test]
+fn a_pattern_with_no_past_prompt_says_so() {
+    let s = Scratch::new("replay-none");
+    s.pack();
+    write_log(&s, "20251118-121500-dddd", "implement-issue", "prompt", "other pattern");
+    replay_reply(&s, question_line(), good_handoff());
+    assert_eq!(s.draft(&[], &[]).status.code(), Some(0));
+    let l = first_line(&s);
+    assert!(l["check"]["replay_note"].as_str().unwrap().contains("no past prompt of `handoff`"), "{l}");
+}

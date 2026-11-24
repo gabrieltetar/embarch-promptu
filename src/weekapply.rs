@@ -90,7 +90,7 @@ struct MdLine {
 }
 
 /// The `- [x] l3 …` lines of `sheet.md`: a box that is not `x`, `X` or `✓` is a ✕, and the
-/// indented text after a line (other than the `proposed:` pointer) is its note.
+/// indented text after a line (other than the `proposed:` and `replay:` pointers) is its note.
 fn parse_md(text: &str) -> Vec<MdLine> {
     let mut out: Vec<MdLine> = vec![];
     for raw in text.lines() {
@@ -107,7 +107,7 @@ fn parse_md(text: &str) -> Vec<MdLine> {
         let indented = line.starts_with("  ") || line.starts_with('\t');
         if let (true, Some(cur)) = (indented, out.last_mut()) {
             let t = line.trim();
-            if t.is_empty() || t.starts_with("- proposed:") {
+            if t.is_empty() || t.starts_with("- proposed:") || t.starts_with("- replay:") {
                 continue;
             }
             let t = t.strip_prefix("- ").unwrap_or(t);

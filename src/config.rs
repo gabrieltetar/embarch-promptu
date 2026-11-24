@@ -152,6 +152,13 @@ pub fn week_timeout(t: &toml::Table) -> std::time::Duration {
     std::time::Duration::from_secs(s as u64)
 }
 
+/// What a week's pattern replays may cost, in dollars: `week_replay_cap_usd`,
+/// 0 or more, default 1.00 [assumed] (forks W24). 0 turns the replay off.
+pub fn week_replay_cap(t: &toml::Table) -> f64 {
+    let v = t.get("week_replay_cap_usd");
+    v.and_then(|v| v.as_float().or_else(|| v.as_integer().map(|n| n as f64))).filter(|c| c.is_finite() && *c >= 0.0).unwrap_or(1.0)
+}
+
 /// The global `CLAUDE.md` sections whose bullets join the memory source;
 /// `None` means every section.
 pub fn claude_md_sections(t: &toml::Table) -> Option<Vec<String>> {
@@ -260,6 +267,10 @@ mod tests {
         assert_eq!((week_model(&t).as_str(), week_effort(&t), week_timeout(&t).as_secs()), ("opus", "medium", 900));
         let t: toml::Table = toml::from_str("week_model = \"sonnet\"\nweek_effort = \"HIGH\"\nweek_timeout_s = 120").unwrap();
         assert_eq!((week_model(&t).as_str(), week_effort(&t), week_timeout(&t).as_secs()), ("sonnet", "high", 120));
+        let t: toml::Table = toml::from_str("week_replay_cap_usd = 2").unwrap();
+        assert_eq!(week_replay_cap(&t), 2.0);
+        let t: toml::Table = toml::from_str("week_replay_cap_usd = -1").unwrap();
+        assert_eq!(week_replay_cap(&t), 1.0);
         let t: toml::Table = toml::from_str("week_timeout_s = 5\nweek_effort = \"max\"").unwrap();
         assert_eq!((week_effort(&t), week_timeout(&t).as_secs()), ("medium", 900));
     }

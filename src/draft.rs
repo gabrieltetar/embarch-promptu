@@ -13,6 +13,8 @@
 use crate::checks::{self, Severity};
 use crate::pass::{self, Call};
 use crate::pattern::{self, Set};
+use crate::replay::{self, Budget};
+use crate::state::LogEntry;
 use crate::week::Fail;
 use crate::{config, lint, state, weekread};
 use serde_json::{json, Map, Value};
@@ -273,8 +275,32 @@ fn check_proposed(name: &str, text: &str, set: &Set, week_dir: &Path, today: &st
     })
 }
 
+/// What the replay needs: the log's past prompts, the pass's call and the week's budget.
+struct Replays {
+    logs: Vec<LogEntry>,
+    call: Call,
+    budget: std::cell::RefCell<Budget>,
+}
+
+impl Replays {
+    /// A pattern's replay, or the reason it has none: only a changed question,
+    /// signal or source is replayed, and a pattern with no old file has no past prompts.
+    fn run(&self, name: &str, text: &str, changes_front: bool, set: &Set, week_dir: &Path, parts: &[String]) -> Result<(Vec<Value>, Option<String>), String> {
+        let Some(old) = set.patterns.get(name).and_then(raw_text) else { return Ok((vec![], Some("a new pattern has no past prompts to replay".into()))) };
+        if !changes_front || !replay::front_changed(&old, text) {
+            return Ok((vec![], Some("no question, signal or source changed: nothing to replay".into())));
+        }
+        let mut new = set.clone();
+        match pattern::parse(&format!("{name}.md"), text) {
+            Ok(p) => new.patterns.insert(name.to_string(), p),
+            Err(_) => return Ok((vec![], None)),
+        };
+        replay::replay(name, (set, &new), &self.logs, &self.call, parts, week_dir, &mut self.budget.borrow_mut())
+    }
+}
+
 /// Give each pattern-changing line its proposed file and its checks.
-fn check_patterns(lines: &mut [Line], files: &Value, set: &Set, week_dir: &Path, today: &str) -> Result<(), String> {
+fn check_patterns(lines: &mut [Line], files: &Value, set: &Set, week_dir: &Path, today: &str, replays: &Replays) -> Result<(), String> {
     let parts: Vec<String> = pattern::DETECTED.iter().map(|p| p.to_string()).collect();
     let mut by_name: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     for (i, l) in lines.iter().enumerate() {
@@ -296,9 +322,15 @@ fn check_patterns(lines: &mut [Line], files: &Value, set: &Set, week_dir: &Path,
             continue;
         };
         let c = check_proposed(&name, text, set, week_dir, today, &parts)?;
+        let (replay, note) = if c.error.is_some() {
+            (vec![], None)
+        } else {
+            let changes_front = idx.iter().any(|&i| matches!(str_of(&lines[i].v["target"], "kind"), "question" | "new_question" | "picker"));
+            replays.run(&name, text, changes_front, set, week_dir, &parts)?
+        };
         for i in idx {
             lines[i].v.insert("proposed".into(), json!(format!("proposed/{name}.md")));
-            lines[i].v.insert("check".into(), json!({ "lint": c.lint, "examples": c.examples, "replay": [] }));
+            lines[i].v.insert("check".into(), json!({ "lint": c.lint, "examples": c.examples, "replay": replay, "replay_note": note }));
             if let Some(e) = &c.error {
                 lines[i].fail(e.clone());
             }
@@ -447,6 +479,13 @@ pub fn sheet_md(sheet: &Value) -> String {
             out.push('\n');
             if let Some(p) = l["proposed"].as_str() {
                 out.push_str(&format!("  - proposed: {p}\n"));
+            }
+            let files: Vec<&str> = l["check"]["replay"].as_array().into_iter().flatten().filter_map(|r| r["file"].as_str()).collect();
+            if !files.is_empty() {
+                out.push_str(&format!("  - replay: {}\n", files.join(", ")));
+            }
+            if let Some(n) = l["check"]["replay_note"].as_str() {
+                out.push_str(&format!("  - replay: {n}\n"));
             }
             if let Some(n) = l["note"].as_str().filter(|n| !n.is_empty()) {
                 out.push_str(&format!("  - note: {n}\n"));
@@ -599,7 +638,12 @@ pub fn draft(args: &Args) -> Result<Value, Fail> {
             return Err(failed(&mut run, &dir, "the reply held no JSON object with `lines`".into()));
         };
         let (mut lines, dropped) = guard(&v, &ids, &set, today);
-        check_patterns(&mut lines, &v["patterns"], &set, &dir, &today.to_string()).map_err(internal)?;
+        let replays = Replays {
+            logs: state::all_logs(),
+            call: Call { model: config::pass_model(&table), effort: config::pass_effort(&table).to_string(), timeout: config::pass_timeout(&table), ..call.clone() },
+            budget: std::cell::RefCell::new(Budget { cap_usd: config::week_replay_cap(&table), spent_usd: 0.0 }),
+        };
+        check_patterns(&mut lines, &v["patterns"], &set, &dir, &today.to_string(), &replays).map_err(internal)?;
         write_memory(&mut lines, &dir).map_err(internal)?;
         (lines, dropped, reply.cost_usd)
     };

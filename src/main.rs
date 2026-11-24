@@ -20,6 +20,7 @@ mod pass;
 mod pattern;
 mod prior;
 mod prep;
+mod replay;
 mod rewrite;
 mod run;
 mod sha1;
