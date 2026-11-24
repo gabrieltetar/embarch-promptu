@@ -21,7 +21,7 @@ fn fail(code: i32, msg: impl Into<String>) -> Fail {
 
 /// Now, local; `PROMPTU_NOW=<RFC 3339 instant>` pins it for tests, as
 /// `PROMPTU_TODAY` pins the day.
-fn now() -> DateTime<Local> {
+pub(crate) fn now() -> DateTime<Local> {
     std::env::var("PROMPTU_NOW")
         .ok()
         .and_then(|s| DateTime::parse_from_rfc3339(s.trim()).ok())
@@ -120,7 +120,7 @@ fn next_after(now: DateTime<Local>, sched: (chrono::Weekday, u32, u32)) -> Optio
 }
 
 /// The latest scheduled instant at or before `now`.
-fn latest_before(now: DateTime<Local>, sched: (chrono::Weekday, u32, u32)) -> Option<DateTime<Local>> {
+pub(crate) fn latest_before(now: DateTime<Local>, sched: (chrono::Weekday, u32, u32)) -> Option<DateTime<Local>> {
     (0..=8).filter_map(|i| instant(now.date_naive() - Duration::days(i), sched.1, sched.2).filter(|_| (now.date_naive() - Duration::days(i)).weekday() == sched.0)).find(|t| *t <= now)
 }
 
@@ -151,7 +151,7 @@ pub fn status() -> Result<Value, Fail> {
     let installed = installed_at.as_deref().and_then(parse_time);
 
     let runs = runs()?;
-    let last = runs.first().map(|r| json!({ "week": r["week"], "started": r["started"], "finished": r["finished"], "status": r["status"], "error": r["error"] }));
+    let last = runs.first().map(|r| json!({ "week": r["week"], "kind": r["kind"], "started": r["started"], "finished": r["finished"], "status": r["status"], "error": r["error"], "cost_usd": r["cost_usd"] }));
     let running = runs.iter().any(|r| {
         r["status"] == "running" && r["finished"].is_null() && r["started"].as_str().and_then(parse_time).is_some_and(|s| now.signed_duration_since(s) < Duration::hours(RUNNING_STALE_HOURS))
     });

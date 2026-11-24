@@ -25,9 +25,18 @@ const KINDS: [&str; 5] = ["pattern", "memory", "new-pattern", "external", "no-ch
 const PATTERN_TARGETS: [&str; 5] = ["question", "new_question", "template", "picker", "pattern"];
 const NOT_ADDRESSED: &str = "not addressed";
 
+/// What `week run` knows about the run that wraps this draft: its record's
+/// kind, the instant it was scheduled for and when it started (§14.1).
+pub struct RunMeta {
+    pub kind: &'static str,
+    pub scheduled_for: Option<String>,
+    pub started: String,
+}
+
 pub struct Args {
     pub week: Option<String>,
     pub pack: Option<PathBuf>,
+    pub run: Option<RunMeta>,
 }
 
 fn usage(msg: impl Into<String>) -> Fail {
@@ -380,7 +389,7 @@ fn numbers(events: &[Value], previous: Option<&Value>) -> Vec<Value> {
         .collect()
 }
 
-/// `sheet.md`: a read-only view of the sheet, one `- [x]` line per proposal (decision 30).
+/// `sheet.md`: the sheet as Markdown, one `- [x]` line per proposal (decision 30). `week mark` and `week apply` read the boxes and the notes back (forks W5).
 pub fn sheet_md(sheet: &Value) -> String {
     let n = sheet["groups"].as_array().into_iter().flatten().flat_map(|g| g["lines"].as_array().into_iter().flatten()).count();
     let mut out = format!(
@@ -534,10 +543,13 @@ pub fn draft(args: &Args) -> Result<Value, Fail> {
     let set = Set::load().map_err(usage)?;
     let today = config::today();
     let call = call_for(&table);
-    let started = chrono::Local::now().to_rfc3339();
+    let (kind, scheduled_for, started) = match &args.run {
+        Some(m) => (m.kind, json!(m.scheduled_for), m.started.clone()),
+        None => ("manual", Value::Null, chrono::Local::now().to_rfc3339()),
+    };
 
     let mut run = json!({
-        "promptu": 1, "week": week, "kind": "manual", "scheduled_for": null, "started": started, "finished": null,
+        "promptu": 1, "week": week, "kind": kind, "scheduled_for": scheduled_for, "started": started, "finished": null,
         "status": "running", "error": null, "model": call.model, "events": events.len(), "lines": 0, "dropped": 0,
     });
     let failed = |run: &mut Value, dir: &Path, msg: String| -> Fail {

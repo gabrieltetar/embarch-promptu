@@ -441,7 +441,7 @@ Decision 43 settles pattern lines. A memory line changes a file Claude Code read
 
 Decision 30 says the sheet is "a Markdown file applied with `promptu week apply`".
 
-- **(a) A read-only view; marks go through `week mark`, which the `/promptu:review` skill and the Desk call** — *provisional default.* One source of truth, `sheet.json`.
+- **(a) `sheet.md` is a view; marks go through `week mark`, which the `/promptu:review` skill and the Desk call** — *provisional default.* One source of truth, `sheet.json`.
 - (b) The owner edits the `- [x]` boxes in `sheet.md`, and `apply` reads them. Matches decision 30's wording, but needs a merge when the Desk and the file disagree.
 
 **Recommendation: (a)**, with (b) added later as a reader of the boxes into `mark`, if the owner wants to edit in a text editor.
@@ -514,7 +514,7 @@ The chat's card shows "running now", and the contract's `run.json` had only `ok`
 - (b) A lock file beside `run.json`, held while the run lives: exact, but a second state file.
 - (c) Never report it: the card shows the last finished run only.
 
-**Recommendation: (a).** `week run` (EMB-277) writes the record; until it exists, `running` is always `false`. The two hours are assumed, not measured.
+**Recommendation: (a).** `week run` (EMB-277) writes the record. The record only informs `status`; what keeps two runs apart is the lock of W19. The two hours are assumed, not measured.
 
 ### W13. The drafter's reply, and what a bad line costs — open
 
@@ -572,3 +572,23 @@ Contract §10 says an `external` line is `applied` only when the owner marks it 
 - (b) `mark --verdict done` for `external` lines only, setting `applied`: matches §10, adds a verdict.
 
 **Recommendation: (b)** when the Desk's section needs to clear an `external` line; (a) until then.
+
+### W19. What keeps two `week run`s apart — open, built on a default (EMB-277)
+
+The timer and the chat's run-now can fire together. A run killed part-way must not block the next one, and W12's `running` record alone cannot refuse a second run.
+
+- **(a) A lock file `week/run.lock` holding `{ pid, week, started }`, created exclusively; held while the run lives; removed on every normal end. A lock is stale when its pid is gone (`/proc/<pid>`, where `/proc` exists) or it is over two hours old; the next run renames it away, settles the dead run's `run.json` as `failed` with an `interrupted` error, and goes on. A live lock exits 4 with nothing written** — *provisional default.* No dependency, no `flock` binding, and a `kill -9` heals itself.
+- (b) An OS advisory lock (`flock`): released by the kernel at death with no stale case, but needs a libc binding and does not carry across the network filesystems or Windows.
+- (c) Only W12's record: a second run starts and overwrites the first's.
+
+**Recommendation: (a).** Exit 4 is new: 1 already means a failed drafter and 2 a usage error, and a caller (the chat's click) must tell "someone else is running" from both. Where `/proc` is missing (not Linux) only the two-hour age speaks, so a killed run there blocks for up to two hours. The two hours are assumed, not measured.
+
+### W20. How `week status` learns the timer is on — open, built on a default (EMB-277)
+
+Decision 45 had `week timer` write the units and `timer.json`; it now prints them and installs nothing, so nothing writes `installed`, which `missed` needs.
+
+- **(a) `week timer --enabled` writes `week/timer.json` with the current instant; the README says to run it after enabling the timer** — *provisional default.* Promptu's own state only; the owner's step stays his.
+- (b) `status` asks `systemctl --user is-enabled`: exact, but decision 45 rejected asking the scheduler.
+- (c) The first `week run --scheduled` writes it: no extra step, but a timer that never fires is never noticed as missed.
+
+**Recommendation: (a).** Without it `status` reports `timer: not installed` and `missed: false`, which is wrong only for an owner who skipped the step.

@@ -106,6 +106,24 @@ embarch-api = "auto"
 
 Inside EmbArch the binary is installed with the suite's others, in `~/.local/share/embarch/bin/`, and the plugin comes from the suite's `embarch` marketplace in [embarch-umbrella](https://github.com/gabrieltetar/embarch-umbrella).
 
+## The weekly pass
+
+`promptu week run` packs the last week of your runs and sessions, then drafts the ✓/✕ sheet with one model call through your own `claude` login. It takes a lock, so two at once is refused with exit 4, and it records the run (start, end, result, cost) for `promptu week status`.
+
+**Turn the timer on** (Linux with systemd; Promptu installs nothing itself):
+
+```sh
+promptu week timer          # prints the two units and the commands below
+mkdir -p ~/.config/systemd/user
+promptu week timer --json | python3 -c 'import json,sys,os; v=json.load(sys.stdin); d=os.path.expanduser("~/.config/systemd/user/"); open(d+v["service_name"],"w").write(v["service"]); open(d+v["timer_name"],"w").write(v["timer"])'
+systemctl --user daemon-reload && systemctl --user enable --now promptu-week.timer
+promptu week timer --enabled   # lets `week status` know when, so it can report a missed run
+```
+
+The schedule is `week_schedule` in `config.toml` (default `wed 08:00`, local time; `Persistent=true` runs a missed one at the next login). After changing it, save the units again. Moving the binary changes `ExecStart`, so do the same.
+
+**Any other scheduler** (cron, launchd, Task Scheduler): run `promptu week run --scheduled` at the time you want. Exit 0 is a sheet written, 1 a failed pack or drafter, 4 another run in progress. Then `promptu week show`, `week mark` and `week apply`, or the `/promptu:review` skill.
+
 ## What comes next
 
 A weekly review of what the patterns got wrong: a ✓/✕ sheet as a Markdown file, applied with `promptu week apply` or reviewed with a `/promptu:review` skill, and shown in EmbArch's Desk when that is there. Then more reference kinds for EmbArch chat's linker. (The pass inside EmbArch's chat panel, with its Memory and Promptu menus, is EmbArch chat's own; it runs this CLI.)

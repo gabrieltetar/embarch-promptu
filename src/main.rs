@@ -29,6 +29,7 @@ mod draft;
 mod week;
 mod weekapply;
 mod weekread;
+mod weekrun;
 mod weeksession;
 
 use checks::{Before, Finding, Severity};
@@ -194,6 +195,25 @@ enum WeekAction {
         #[arg(long)]
         json: bool,
     },
+    /// `pack`, then `draft`, as one run under a lock: what the timer runs (§14.4). Exit 4 when another run is in progress.
+    Run {
+        /// An ISO week `YYYY-Www`, local time; default: the week of today.
+        #[arg(long)]
+        week: Option<String>,
+        /// Record the run as the timer's (`kind: scheduled`).
+        #[arg(long)]
+        scheduled: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print the systemd user service and timer built from `week_schedule`; installs nothing (§14.4).
+    Timer {
+        /// Also record that the timer was turned on, in `week/timer.json`, for `week status`.
+        #[arg(long)]
+        enabled: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// The last run, the next run, a missed run and the waiting sheet (§14.4). Read-only; never asks the scheduler.
     Status {
         #[arg(long)]
@@ -270,6 +290,8 @@ fn main() {
                 Cmd::Prior { prompt, projects, json } => run_prior(&prompt, projects.as_deref(), json),
                 Cmd::Week { action: WeekAction::Pack { week, projects, json } } => run_week_pack(week, projects, json),
                 Cmd::Week { action: WeekAction::Draft { week, pack, json } } => run_week_draft(week, pack, json),
+                Cmd::Week { action: WeekAction::Run { week, scheduled, json } } => run_week_run(weekrun::RunArgs { week, scheduled }, json),
+                Cmd::Week { action: WeekAction::Timer { enabled, json } } => run_week_timer(enabled, json),
                 Cmd::Week { action: WeekAction::Status { json } } => run_week_status(json),
                 Cmd::Week { action: WeekAction::Show { week, json } } => run_week_show(week.as_deref(), json),
                 Cmd::Week { action: WeekAction::Mark { ids, verdict, note, feel, week, json } } => run_week_mark(weekapply::MarkArgs { ids, verdict, note, feel, week }, json),
@@ -369,12 +391,41 @@ fn run_week_pack(week: Option<String>, projects: Option<PathBuf>, json: bool) ->
 /// `promptu week draft` (§14.4): 0 a sheet written, 1 the drafter failed (one line, no sheet), 2 a usage error.
 fn run_week_draft(week: Option<String>, pack: Option<PathBuf>, json: bool) -> i32 {
     debug_panic();
-    match draft::draft(&draft::Args { week, pack }) {
+    match draft::draft(&draft::Args { week, pack, run: None }) {
         Ok(v) => {
             if json {
                 println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
             } else {
                 print!("{}", draft::text(&v));
+            }
+            0
+        }
+        Err(e) => {
+            eprintln!("promptu: {}", e.msg);
+            e.code
+        }
+    }
+}
+
+/// `promptu week run` (§14.4): 0 a sheet written, 1 pack or drafter failed, 2 a usage error, 4 another run in progress.
+fn run_week_run(args: weekrun::RunArgs, json: bool) -> i32 {
+    debug_panic();
+    print_week(weekrun::run(&args), json, weekrun::text)
+}
+
+/// `promptu week timer` (§14.4): 0, 3 an internal error. Installs nothing.
+fn run_week_timer(enabled: bool, json: bool) -> i32 {
+    debug_panic();
+    print_week(weekrun::timer(enabled), json, weekrun::timer_text)
+}
+
+fn print_week(r: Result<serde_json::Value, week::Fail>, json: bool, text: fn(&serde_json::Value) -> String) -> i32 {
+    match r {
+        Ok(v) => {
+            if json {
+                println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+            } else {
+                print!("{}", text(&v));
             }
             0
         }
