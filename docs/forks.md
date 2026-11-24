@@ -503,3 +503,13 @@ A terminal run's `drafts/<run>.md` is its edit baseline (decision 44), but `rend
 - (c) Ignore a draft unless the transcript shows a terminal question.
 
 **Recommendation: (a).** (b) invents a send; (c) loses the edit of a terminal run whose transcript is outside the 30 days or was cleaned.
+
+### W12. How `status` knows a run is in progress — open
+
+The chat's card shows "running now", and the contract's `run.json` had only `ok` and `failed`.
+
+- **(a) `week run` writes `run.json` at its start with `status: "running"` and `finished: null`, and rewrites it at the end; `status` reads a `running` record younger than two hours as running** — *provisional default.* A crashed run stops reading as running after two hours; the drafter's timeout is at most an hour.
+- (b) A lock file beside `run.json`, held while the run lives: exact, but a second state file.
+- (c) Never report it: the card shows the last finished run only.
+
+**Recommendation: (a).** `week run` (EMB-277) writes the record; until it exists, `running` is always `false`. The two hours are assumed, not measured.

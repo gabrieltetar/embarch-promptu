@@ -26,6 +26,7 @@ mod sha1;
 mod state;
 mod used;
 mod week;
+mod weekread;
 
 use checks::{Before, Finding, Severity};
 use clap::{Parser, Subcommand};
@@ -146,6 +147,11 @@ enum Cmd {
         #[command(subcommand)]
         action: WeekAction,
     },
+    /// What the Desk section shows: the open count of the waiting weekly sheet (§9). Read-only.
+    Desk {
+        #[arg(long)]
+        json: bool,
+    },
     /// Check pattern files: schema, AskUserQuestion's limits, slots, examples (§7.7).
     Lint {
         /// Pattern files or a folder; none: the patterns this binary carries (or PROMPTU_PATTERNS).
@@ -171,6 +177,19 @@ enum WeekAction {
         /// A Claude Code `projects/` folder of transcripts; default: the config home's.
         #[arg(long)]
         projects: Option<PathBuf>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// The last run, the next run, a missed run and the waiting sheet (§14.4). Read-only; never asks the scheduler.
+    Status {
+        #[arg(long)]
+        json: bool,
+    },
+    /// One week's sheet: the open one by default (§14.4). Read-only.
+    Show {
+        /// An ISO week `YYYY-Www`.
+        #[arg(long)]
+        week: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -206,6 +225,9 @@ fn main() {
                 Cmd::Calls { session, subagent, class, json } => run_calls(&session, subagent.as_deref(), class.as_deref(), json),
                 Cmd::Prior { prompt, projects, json } => run_prior(&prompt, projects.as_deref(), json),
                 Cmd::Week { action: WeekAction::Pack { week, projects, json } } => run_week_pack(week, projects, json),
+                Cmd::Week { action: WeekAction::Status { json } } => run_week_status(json),
+                Cmd::Week { action: WeekAction::Show { week, json } } => run_week_show(week.as_deref(), json),
+                Cmd::Desk { json } => run_desk(json),
                 Cmd::Next { run } => run_next(&run),
                 Cmd::Render { run, rest, text } => run_render(&run, rest, text),
                 Cmd::Original { run, json } => run_original(&run, json),
@@ -287,6 +309,50 @@ fn run_week_pack(week: Option<String>, projects: Option<PathBuf>, json: bool) ->
                 println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
             } else {
                 print!("{}", week::text(&v));
+            }
+            0
+        }
+        Err(e) => {
+            eprintln!("promptu: {}", e.msg);
+            e.code
+        }
+    }
+}
+
+/// `promptu week status` (§14.4): 0 always, 3 an internal error.
+fn run_week_status(json: bool) -> i32 {
+    debug_panic();
+    print_read(weekread::status(), json, weekread::status_text)
+}
+
+/// `promptu desk` (§9): 0, also with no sheet or no state folder; 3 an internal error.
+fn run_desk(json: bool) -> i32 {
+    debug_panic();
+    print_read(weekread::desk(), json, weekread::desk_text)
+}
+
+/// `promptu week show` (§14.4): 0, 2 an unknown week or no sheet.
+fn run_week_show(week: Option<&str>, json: bool) -> i32 {
+    debug_panic();
+    match weekread::show(week, json) {
+        Ok(t) => {
+            print!("{t}");
+            0
+        }
+        Err(e) => {
+            eprintln!("promptu: {}", e.msg);
+            e.code
+        }
+    }
+}
+
+fn print_read(r: Result<serde_json::Value, week::Fail>, json: bool, text: fn(&serde_json::Value) -> String) -> i32 {
+    match r {
+        Ok(v) => {
+            if json {
+                println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+            } else {
+                print!("{}", text(&v));
             }
             0
         }
