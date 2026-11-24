@@ -68,6 +68,35 @@ pub(crate) fn open_sheet() -> Result<Option<(String, Value)>, Fail> {
     Ok(None)
 }
 
+/// The earlier sheet a pack for `week` carries from (§14.1, decision 46): the
+/// sheet this week's own sheet supersedes, else the newest open sheet of an
+/// earlier week. `None` with no such sheet.
+pub(crate) fn carry_source(week: &str) -> Result<Option<(String, Value)>, Fail> {
+    let dir = week_dir()?;
+    if let Some(own) = read_json(&dir.join(week).join("sheet.json"))? {
+        let Some(from) = own["supersedes"].as_str().filter(|w| is_week_id(w)) else { return Ok(None) };
+        return Ok(read_json(&dir.join(from).join("sheet.json"))?.map(|s| (from.to_string(), s)));
+    }
+    for w in weeks()?.into_iter().filter(|w| w.as_str() < week) {
+        if let Some(s) = read_json(&dir.join(&w).join("sheet.json"))? {
+            if s["superseded_by"].is_null() {
+                return Ok(Some((w, s)));
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// A pack's events of an earlier week by id; empty when its pack is gone.
+pub(crate) fn pack_events(week: &str) -> Vec<Value> {
+    let Ok(dir) = week_dir() else { return vec![] };
+    read_json(&dir.join(week).join("pack.json")).ok().flatten().and_then(|p| p["events"].as_array().cloned()).unwrap_or_default()
+}
+
+pub(crate) fn sheet_lines(sheet: &Value) -> Vec<&Value> {
+    lines(sheet).collect()
+}
+
 fn lines(sheet: &Value) -> impl Iterator<Item = &Value> {
     sheet["groups"].as_array().into_iter().flatten().flat_map(|g| g["lines"].as_array().into_iter().flatten())
 }

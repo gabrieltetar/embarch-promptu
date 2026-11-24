@@ -149,7 +149,7 @@ fn a_chat_run_and_a_terminal_run_are_each_found_and_an_edit_has_its_diff() {
     assert_eq!(out["events"]["run"], 5);
     let pack = read_pack(&s, "2026-W48");
     assert_eq!(pack["promptu"], 1);
-    assert_eq!(pack["events"].as_array().unwrap().len(), 5);
+    assert_eq!(events_of(&pack, "run").len(), 5);
     assert_eq!(pack["events"][0]["id"], "e1");
     assert_eq!(pack["events"][4]["id"], "e5");
 
@@ -262,4 +262,165 @@ fn a_past_week_reads_the_seven_days_before_its_scheduled_day_and_a_bad_week_or_f
     let out: Value = serde_json::from_slice(&s.pack(&["--week", "2026-W47"]).stdout).unwrap();
     assert_eq!(out["window"]["from"], "2026-11-11");
     assert!(out["warnings"][0].as_str().unwrap().contains("someday"));
+}
+
+// ---- sessions: friction, unmatched starts, outcomes, carried lines ----
+
+fn assistant(at: &str) -> Value {
+    json!({"type": "assistant", "timestamp": at, "message": {"content": [{"type": "text", "text": "working"}]}})
+}
+
+fn interrupt(at: &str) -> Value {
+    json!({"type": "user", "timestamp": at, "message": {"content": [{"type": "text", "text": "[Request interrupted by user]"}]}})
+}
+
+fn plan(id: &str, at: &str, refused: bool) -> Vec<Value> {
+    vec![
+        json!({"type": "assistant", "timestamp": at, "message": {"content": [{"type": "tool_use", "id": id, "name": "ExitPlanMode", "input": {"plan": "do it"}}]}}),
+        json!({"type": "user", "timestamp": at, "message": {"content": [{"type": "tool_result", "tool_use_id": id, "is_error": refused, "content": if refused { "The user doesn't want to proceed with this tool use." } else { "User has approved your plan." }}]}}),
+    ]
+}
+
+fn commit(id: &str, at: &str, sha: &str) -> Vec<Value> {
+    vec![
+        json!({"type": "assistant", "timestamp": at, "message": {"content": [{"type": "tool_use", "id": id, "name": "Bash", "input": {"command": "git commit -am work"}}]}}),
+        json!({"type": "user", "timestamp": at, "message": {"content": [{"type": "tool_result", "tool_use_id": id, "content": format!("[main {sha}] work\n 1 file changed")}]}}),
+    ]
+}
+
+fn events_of<'a>(pack: &'a Value, kind: &str) -> Vec<&'a Value> {
+    pack["events"].as_array().unwrap().iter().filter(|e| e["kind"] == kind).collect()
+}
+
+const LONG: &str = "please look into why the flash step fails on the second board and report what you find";
+
+#[test]
+fn a_session_has_its_friction_candidates_with_the_follow_up_text() {
+    let s = Scratch::new("friction");
+    let mut lines = vec![owner(&s, "2026-11-20T09:00:00Z", LONG), assistant("2026-11-20T09:01:00Z"), assistant("2026-11-20T09:02:00Z")];
+    // An interrupt, then a real next prompt: friction. Then an interrupt and a nudge: not.
+    lines.push(interrupt("2026-11-20T09:03:00Z"));
+    lines.push(owner(&s, "2026-11-20T09:04:00Z", "use the other board"));
+    lines.push(interrupt("2026-11-20T09:05:00Z"));
+    lines.push(owner(&s, "2026-11-20T09:06:00Z", "Continue."));
+    // A rejected plan, then a prompt: friction; an approved plan: none.
+    lines.extend(plan("p1", "2026-11-20T09:07:00Z", true));
+    lines.push(owner(&s, "2026-11-20T09:08:00Z", "plan it in two steps"));
+    lines.extend(plan("p2", "2026-11-20T09:09:00Z", false));
+    lines.push(owner(&s, "2026-11-20T09:10:00Z", "also add a test"));
+    // A typed correction with no interrupt.
+    lines.push(assistant("2026-11-20T09:11:00Z"));
+    lines.push(owner(&s, "2026-11-20T09:12:00Z", "No, the other repo"));
+    s.transcript("sess-f", &lines);
+    let o = s.pack(&[]);
+    assert_eq!(o.status.code(), Some(0), "{}", String::from_utf8_lossy(&o.stderr));
+    let pack = read_pack(&s, "2026-W48");
+    let sessions = events_of(&pack, "session");
+    assert_eq!(sessions.len(), 1);
+    let e = sessions[0];
+    assert_eq!((e["session"].as_str(), e["owner_messages"].as_u64(), e["interrupts"].as_u64()), (Some("sess-f"), Some(6), Some(2)));
+    assert_eq!(e["promptu"], false);
+    let r: Vec<(&str, Vec<&str>)> = e["redirects"].as_array().unwrap().iter().map(|r| (r["text"].as_str().unwrap(), r["signs"].as_array().unwrap().iter().map(|x| x.as_str().unwrap()).collect())).collect();
+    assert_eq!(r, vec![("use the other board", vec!["interrupt"]), ("plan it in two steps", vec!["plan_rejected"]), ("No, the other repo", vec!["negation"])]);
+    assert_eq!(e["redirects"][0]["after_assistant_messages"], 2);
+    assert_eq!(e["redirects"][0]["at"], "2026-11-20T09:04:00Z");
+    let out: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!((out["sessions"].as_u64(), out["events"]["session"].as_u64()), (Some(1), Some(1)));
+}
+
+#[test]
+fn an_unmatched_start_has_no_footer_or_footer_none_and_is_a_task_not_a_question() {
+    let s = Scratch::new("unmatched");
+    s.transcript("sess-a", &[owner(&s, "2026-11-19T10:00:00Z", LONG)]);
+    s.transcript("sess-b", &[owner(&s, "2026-11-19T11:00:00Z", &format!("{LONG}\n\n— promptu none"))]);
+    s.transcript("sess-c", &[owner(&s, "2026-11-19T12:00:00Z", "what does the flash step do?")]);
+    s.transcript("sess-d", &[owner(&s, "2026-11-19T13:00:00Z", &format!("{LONG}\n\n— promptu alpha@1 asked=board:rec"))]);
+    // Not in the window: 2026-11-10.
+    s.transcript("sess-old", &[owner(&s, "2026-11-10T13:00:00Z", LONG)]);
+    s.pack(&[]);
+    let pack = read_pack(&s, "2026-W48");
+    let un: Vec<(&str, &str)> = events_of(&pack, "unmatched").iter().map(|e| (e["session"].as_str().unwrap(), e["why"].as_str().unwrap())).collect();
+    assert_eq!(un, vec![("sess-a", "no_footer"), ("sess-b", "footer_none")]);
+    assert_eq!(events_of(&pack, "unmatched")[0]["words"], 17);
+    assert_eq!(events_of(&pack, "unmatched")[0]["at"], "2026-11-19T10:00:00Z");
+    assert!(events_of(&pack, "unmatched")[0]["text"].as_str().unwrap().starts_with("please look into"));
+    assert_eq!(events_of(&pack, "session").len(), 4, "sessions oldest first, the old one out");
+    assert_eq!(events_of(&pack, "session")[0]["session"], "sess-a");
+}
+
+#[test]
+fn a_session_says_whether_it_started_with_promptu_and_which_run() {
+    let s = Scratch::new("started");
+    let f = "— promptu alpha@1 asked=board:rec";
+    s.log("20261120-090000-aaaa", "2026-11-20T09:00:00+00:00", "alpha", &rendered("fix the flash", f));
+    s.transcript("sess-p", &[owner(&s, "2026-11-20T09:05:00Z", &rendered("fix the flash", f)), assistant("2026-11-20T09:06:00Z")]);
+    s.transcript("sess-n", &[owner(&s, "2026-11-20T09:07:00Z", "fix the flash"), assistant("2026-11-20T09:08:00Z")]);
+    s.pack(&[]);
+    let pack = read_pack(&s, "2026-W48");
+    let sessions = events_of(&pack, "session");
+    let p = sessions.iter().find(|e| e["session"] == "sess-p").unwrap();
+    assert_eq!((p["promptu"].as_bool(), p["pattern"].as_str(), p["run"].as_str()), (Some(true), Some("alpha"), Some("20261120-090000-aaaa")));
+    let n = sessions.iter().find(|e| e["session"] == "sess-n").unwrap();
+    assert_eq!((n["promptu"].as_bool(), n["pattern"].is_null(), n["run"].is_null()), (Some(false), true, true));
+    assert!(events_of(&pack, "unmatched").is_empty(), "a short start is no task");
+}
+
+#[test]
+fn a_commit_in_a_session_or_its_subagent_is_its_outcome() {
+    let s = Scratch::new("outcome");
+    let mut main = vec![owner(&s, "2026-11-20T09:00:00Z", LONG)];
+    main.extend(commit("c1", "2026-11-20T09:30:00Z", "1111111"));
+    s.transcript("sess-m", &main);
+    // A session whose only commit was made by a subagent.
+    s.transcript("sess-s", &[owner(&s, "2026-11-20T10:00:00Z", LONG), assistant("2026-11-20T10:01:00Z")]);
+    let sub = s.root.join("claude/projects").join(s.key()).join("sess-s/subagents");
+    std::fs::create_dir_all(&sub).unwrap();
+    let mut sublines = vec![];
+    sublines.extend(commit("c2", "2026-11-20T10:20:00Z", "2222222"));
+    sublines.extend(commit("c3", "2026-11-20T10:25:00Z", "3333333"));
+    // A failed commit counts for nothing.
+    sublines.push(json!({"type": "assistant", "timestamp": "2026-11-20T10:26:00Z", "message": {"content": [{"type": "tool_use", "id": "c4", "name": "Bash", "input": {"command": "git commit -m x"}}]}}));
+    sublines.push(json!({"type": "user", "timestamp": "2026-11-20T10:26:01Z", "message": {"content": [{"type": "tool_result", "tool_use_id": "c4", "is_error": true, "content": "nothing to commit"}]}}));
+    std::fs::write(sub.join("agent-a1.jsonl"), sublines.iter().map(Value::to_string).collect::<Vec<_>>().join("\n")).unwrap();
+    // No commit: no outcome.
+    s.transcript("sess-x", &[owner(&s, "2026-11-20T11:00:00Z", LONG)]);
+    let o = s.pack(&[]);
+    let pack = read_pack(&s, "2026-W48");
+    let out: Vec<(&str, u64, u64, &str)> = events_of(&pack, "outcome").iter().map(|e| (e["session"].as_str().unwrap(), e["commits"].as_u64().unwrap(), e["in_subagents"].as_u64().unwrap(), e["first"].as_str().unwrap())).collect();
+    assert_eq!(out, vec![("sess-m", 1, 0, "1111111"), ("sess-s", 2, 2, "2222222")]);
+    assert_eq!(events_of(&pack, "outcome")[1]["type"], "commit");
+    assert_eq!(events_of(&pack, "outcome")[1]["at"], "2026-11-20T10:20:00Z");
+    assert_eq!(events_of(&pack, "outcome")[1]["repo"], s.repo().to_string_lossy().as_ref());
+    let out: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!((out["events"]["outcome"].as_u64(), out["events"]["session"].as_u64(), out["events"]["carried"].as_u64()), (Some(2), Some(3), Some(0)));
+}
+
+#[test]
+fn an_open_or_failed_line_of_the_earlier_sheet_is_carried_with_its_events() {
+    let s = Scratch::new("carried");
+    let put = |rel: &str, v: Value| {
+        let p = s.state().join("week").join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, v.to_string()).unwrap();
+    };
+    let line = |id: &str, status: &str, events: Value| json!({"id": id, "kind": "pattern", "status": status, "verdict": "approve", "target": {"kind": "question"}, "change": "add option", "text": format!("text {id}"), "events": events, "error": null});
+    put("2026-W47/pack.json", json!({"promptu": 1, "week": "2026-W47", "events": [{"id": "e1", "kind": "run", "run": "r1"}, {"id": "e2", "kind": "run", "run": "r2"}]}));
+    put("2026-W47/sheet.json", json!({"promptu": 1, "week": "2026-W47", "superseded_by": null, "groups": [{"id": "g1", "lines": [
+        line("l1", "open", json!(["e1"])), line("l2", "failed", json!(["e2", "e9"])), line("l3", "applied", json!(["e1"])), line("l4", "cut", json!(["e2"]))]}]}));
+    let o = s.pack(&[]);
+    assert_eq!(o.status.code(), Some(0), "{}", String::from_utf8_lossy(&o.stderr));
+    let pack = read_pack(&s, "2026-W48");
+    let c = events_of(&pack, "carried");
+    assert_eq!(c.iter().map(|e| e["from"].as_str().unwrap()).collect::<Vec<_>>(), vec!["2026-W47:l1", "2026-W47:l2"]);
+    assert_eq!(c[0]["events"], json!([{"id": "e1", "kind": "run", "run": "r1"}]));
+    assert_eq!(c[1]["events"], json!([{"id": "e2", "kind": "run", "run": "r2"}]), "an id the old pack lacks is left out");
+    assert_eq!((c[1]["line"]["status"].as_str(), c[1]["line"]["text"].as_str()), (Some("failed"), Some("text l2")));
+    assert_eq!(c[0]["id"], "e1");
+    assert_eq!(c[1]["id"], "e2");
+    let out: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!(out["events"]["carried"], 2);
+    // A superseded sheet is not carried; the same week's own sheet is not either.
+    put("2026-W47/sheet.json", json!({"promptu": 1, "week": "2026-W47", "superseded_by": "2026-W48", "groups": [{"id": "g1", "lines": [line("l1", "open", json!(["e1"]))]}]}));
+    s.pack(&[]);
+    assert!(events_of(&read_pack(&s, "2026-W48"), "carried").is_empty());
 }

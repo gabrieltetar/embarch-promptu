@@ -28,6 +28,7 @@ mod used;
 mod draft;
 mod week;
 mod weekread;
+mod weeksession;
 
 use checks::{Before, Finding, Severity};
 use clap::{Parser, Subcommand};

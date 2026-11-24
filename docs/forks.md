@@ -421,7 +421,7 @@ The pack is model-free, so "redirected message" needs a mechanical candidate rul
 
 Decision 47 fixes the first cut as a commit; how one is tied to a session is open.
 
-- **(a) A commit in the session's `cwd` checkout by the owner's `git config user.email`, between the session's start and its end plus one hour** — *provisional default.*
+- **(a) A commit in the session's `cwd` checkout by the owner's `git config user.email`, between the session's start and its end plus one hour** — *the first default; EMB-274 built W16 a instead.*
 - (b) The same, but only commits whose message names the session's work item key.
 - (c) Any commit in the checkout in the window, session or not.
 
@@ -540,4 +540,14 @@ Decision 14 says every event gets a proposal; most need no change. The contract 
 - **(a) Supersede and keep the same week's marks now; carry the earlier sheet's open and failed lines when the pack holds `carried` events (EMB-274)** — *provisional default.* The pack is the account of the week, and the drafter re-proposes carried events like any other, so the carry needs no code in `draft` once the pack builds it.
 - (b) Have `draft` copy the earlier lines into the new sheet itself: works before EMB-274, but the drafter never sees them and cannot merge a carried line with a new one.
 
-**Recommendation: (a).** Until EMB-274 lands, a superseded sheet's open lines are not re-proposed.
+**Recommendation: (a).** Built in EMB-274: the pack's `carried` events carry them, and `draft` needed no change.
+
+### W16. Where a session's sessions, commits and window come from — open
+
+EMB-274 built the session events. The contract tied a commit to a session through `git log` by `user.email` (W3 a); the pack is meant to be read-only and offline, and a commit a subagent made is in the subagent's transcript, not always in the checkout's reach of the session's dates.
+
+- **(a) A commit is a `git commit` call in the session's transcript or a subagent's whose result shows git's `[<branch> <hash>]` line; the pack runs no `git`. A session is any top-level transcript in the projects folder whose first record's local date is in the window, in every project, not only those with a run** — *provisional default.* It sees what Claude committed, including from subagents, and needs no checkout, no `user.email` and no `git` on `PATH`. It misses a commit the owner makes by hand in a terminal, and it counts a commit later undone.
+- (b) W3 a as written: `git log` in the session's `cwd` by the owner's email, dates between the session's start and its end plus an hour. Sees hand commits; two sessions in one checkout share commits, a deleted worktree sees none, and the pack then needs `git`.
+- (c) Both, the union by hash.
+
+**Recommendation: (a)**, then compare with (b) on one real week. The commits the owner makes himself are not a pattern's outcome. The sessions of projects with no run are kept because decision 15's control group is exactly the sessions that did not start with Promptu.

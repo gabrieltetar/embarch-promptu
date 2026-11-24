@@ -147,6 +147,87 @@ pub fn read_calls(text: &str) -> Vec<Call> {
         .collect()
 }
 
+/// A commit a session made: the short hash `git commit` printed, and when the
+/// call was made (the record's `timestamp`, as written).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Commit {
+    pub sha: String,
+    pub at: String,
+}
+
+/// Whether a Bash command runs `git commit` (global options such as `-C <dir>`
+/// allowed between). `git commit-tree` and `--dry-run` are not commits.
+pub fn is_commit(cmd: &str) -> bool {
+    static COMMIT: OnceLock<Regex> = OnceLock::new();
+    re(&COMMIT, r"(^|[\s;&|(])git(\s+(-C\s+\S+|-c\s+\S+|--[a-z-]+(=\S+)?))*\s+commit(\s|$)").is_match(cmd) && !cmd.contains("--dry-run")
+}
+
+/// The commits one transcript made, in order: a `git commit` call whose result
+/// shows git's `[<branch> <sha>] <subject>` line and is not an error. Reads
+/// every record, so a subagent's own transcript is read as it is written.
+pub fn commits(text: &str) -> Vec<Commit> {
+    static LINE: OnceLock<Regex> = OnceLock::new();
+    let line = re(&LINE, r"(?m)^\[[^\]\n]* ([0-9a-f]{7,40})\]");
+    let mut order: Vec<String> = vec![];
+    let mut at: HashMap<String, String> = HashMap::new();
+    let mut done: HashMap<String, Option<String>> = HashMap::new();
+    for l in text.lines() {
+        let Ok(v) = serde_json::from_str::<Value>(l) else { continue };
+        let stamp = v.get("timestamp").and_then(Value::as_str).unwrap_or("");
+        let Some(blocks) = v.pointer("/message/content").and_then(Value::as_array) else { continue };
+        for b in blocks {
+            match b.get("type").and_then(Value::as_str) {
+                Some("tool_use") if b.get("name").and_then(Value::as_str) == Some("Bash") => {
+                    let cmd = b.pointer("/input/command").and_then(Value::as_str).unwrap_or("");
+                    if let Some(id) = b.get("id").and_then(Value::as_str).filter(|_| is_commit(cmd)) {
+                        if at.insert(id.to_string(), stamp.to_string()).is_none() {
+                            order.push(id.to_string());
+                        }
+                    }
+                }
+                Some("tool_result") => {
+                    let Some(id) = b.get("tool_use_id").and_then(Value::as_str) else { continue };
+                    if b.get("is_error").and_then(Value::as_bool) == Some(true) {
+                        done.entry(id.to_string()).or_insert(None);
+                        continue;
+                    }
+                    let body = crate::used::texts(&b["content"]).join("\n");
+                    done.entry(id.to_string()).or_insert_with(|| line.captures(&body).map(|c| c[1].to_string()));
+                }
+                _ => {}
+            }
+        }
+    }
+    order.into_iter().filter_map(|id| done.get(&id).cloned().flatten().map(|sha| Commit { sha, at: at[&id].clone() })).collect()
+}
+
+/// Every commit of a session: its main transcript and each subagent's, newest
+/// duplicates (one hash seen twice) dropped, in time order of the records.
+pub fn session_commits(session: &Path) -> Vec<(Commit, bool)> {
+    let mut out: Vec<(Commit, bool)> = vec![];
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut take = |text: &str, sub: bool, out: &mut Vec<(Commit, bool)>| {
+        for c in commits(text) {
+            if seen.insert(c.sha.clone()) {
+                out.push((c, sub));
+            }
+        }
+    };
+    if let Ok(t) = std::fs::read_to_string(session) {
+        take(&t, false, &mut out);
+    }
+    let dir = session.with_extension("").join("subagents");
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "jsonl")).collect();
+    files.sort();
+    for f in files {
+        if let Ok(t) = std::fs::read_to_string(&f) {
+            take(&t, true, &mut out);
+        }
+    }
+    out.sort_by(|a, b| a.0.at.cmp(&b.0.at));
+    out
+}
+
 fn thread(id: &str, description: &str, text: &str) -> Thread {
     let list = read_calls(text);
     let mut by_class: BTreeMap<String, Tally> = CLASSES.iter().map(|c| (c.to_string(), Tally::default())).collect();
@@ -275,6 +356,29 @@ mod tests {
         assert_eq!(t("Edit", "file_path", "/w/src/a.rs"), "other");
         // git wins over config: history of a Kconfig is history.
         assert_eq!(bash("git log -- Kconfig"), "git");
+    }
+
+    #[test]
+    fn a_commit_is_a_git_commit_call_whose_result_shows_a_hash() {
+        assert!(is_commit("git commit -m x"));
+        assert!(is_commit("cd /w && git -C /w commit -am 'x'"));
+        assert!(!is_commit("git commit --dry-run"));
+        assert!(!is_commit("git commit-tree abc"));
+        assert!(!is_commit("git log"));
+        let rec = |t: &str, ts: &str, b: Value| json!({"type": t, "timestamp": ts, "message": {"content": [b]}}).to_string();
+        let text = [
+            rec("assistant", "2026-11-20T10:00:00Z", json!({"type":"tool_use","id":"a","name":"Bash","input":{"command":"git commit -m one"}})),
+            rec("user", "2026-11-20T10:00:01Z", json!({"type":"tool_result","tool_use_id":"a","content":"[main 9f3a1c2] one\n 1 file changed"})),
+            rec("assistant", "2026-11-20T10:01:00Z", json!({"type":"tool_use","id":"b","name":"Bash","input":{"command":"git commit -m two"}})),
+            rec("user", "2026-11-20T10:01:01Z", json!({"type":"tool_result","tool_use_id":"b","is_error":true,"content":"nothing to commit"})),
+            rec("assistant", "2026-11-20T10:02:00Z", json!({"type":"tool_use","id":"c","name":"Bash","input":{"command":"git commit -m three"}})),
+            rec("user", "2026-11-20T10:02:01Z", json!({"type":"tool_result","tool_use_id":"c","content":[{"type":"text","text":"[feature/x (root-commit) abcdef0123] three"}]})),
+            rec("assistant", "2026-11-20T10:03:00Z", json!({"type":"tool_use","id":"d","name":"Bash","input":{"command":"git commit -m four"}})),
+            rec("user", "2026-11-20T10:03:01Z", json!({"type":"tool_result","tool_use_id":"d","content":"On branch main\nnothing to commit, working tree clean"})),
+        ]
+        .join("\n");
+        let got: Vec<(String, String)> = commits(&text).into_iter().map(|c| (c.sha, c.at)).collect();
+        assert_eq!(got, vec![("9f3a1c2".into(), "2026-11-20T10:00:00Z".into()), ("abcdef0123".into(), "2026-11-20T10:02:00Z".into())]);
     }
 
     #[test]

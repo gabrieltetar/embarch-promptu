@@ -1,14 +1,14 @@
 //! `promptu week pack` (docs/contract.md §14.4, §14.5): the week's events, read
 //! from `log/`, `drafts/` and the transcripts, with no model and no network.
 //!
-//! This build writes the `run` events: what each rendered run's footer says,
-//! and how the owner changed the prompt before he sent it. The other event
-//! kinds (`session`, `unmatched`, `outcome`, `carried`) are counted as 0 until
-//! their own unit (EMB-274) builds them.
+//! The `run` events say what each rendered run's footer says and how the owner
+//! changed the prompt before he sent it; `weeksession` builds the `session`,
+//! `unmatched` and `outcome` events from the transcripts; the `carried` events
+//! re-offer the earlier open sheet's open and failed lines (decision 46).
 
 use crate::footer::{self, LEAD};
 use crate::state::{self, LogEntry};
-use crate::{claude, config, used};
+use crate::{claude, config, used, weekread, weeksession};
 use chrono::{DateTime, Datelike, Duration, FixedOffset, NaiveDate, Weekday};
 use serde_json::{json, Value};
 use std::collections::HashSet;
@@ -366,6 +366,30 @@ fn run_event(id: usize, run: &LogEntry, sent: Value) -> Value {
     e
 }
 
+// ---- carried events ----
+
+/// One `carried` event per open or failed line of the earlier sheet (§14.5):
+/// the line's own events, quoted from that week's pack, and the line itself,
+/// so a line whose pack is gone still reaches the drafter (forks W15).
+fn carried_events(week: &str, first_id: usize) -> Result<Vec<Value>, Fail> {
+    let Some((from_week, sheet)) = weekread::carry_source(week).map_err(|e| Fail { code: e.code, msg: e.msg })? else { return Ok(vec![]) };
+    let pack = weekread::pack_events(&from_week);
+    let mut out = vec![];
+    for l in weekread::sheet_lines(&sheet) {
+        if !matches!(l["status"].as_str(), Some("open" | "failed")) {
+            continue;
+        }
+        let quoted: Vec<Value> = l["events"].as_array().into_iter().flatten().filter_map(Value::as_str).filter_map(|id| pack.iter().find(|e| e["id"] == id).cloned()).collect();
+        out.push(json!({
+            "id": format!("e{}", first_id + out.len()), "kind": "carried",
+            "from": format!("{from_week}:{}", l["id"].as_str().unwrap_or("")),
+            "line": { "kind": l["kind"], "target": l["target"], "change": l["change"], "text": l["text"], "status": l["status"], "error": l["error"] },
+            "events": quoted,
+        }));
+    }
+    Ok(out)
+}
+
 // ---- the command ----
 
 pub struct Args {
@@ -388,7 +412,8 @@ pub fn pack(args: &Args) -> Result<Value, Fail> {
         None => claude::config_dir().map(|c| c.join("projects")),
     };
     let oldest = today - Duration::days(used::WINDOW_DAYS);
-    let txs: Vec<Transcript> = projects.map(|p| used::transcripts_in(&p, oldest)).unwrap_or_default().iter().filter_map(|f| read_transcript(f)).collect();
+    let files: Vec<PathBuf> = projects.map(|p| used::transcripts_in(&p, oldest)).unwrap_or_default();
+    let txs: Vec<Transcript> = files.iter().filter_map(|f| read_transcript(f)).collect();
 
     let mut claimed = HashSet::new();
     let mut events: Vec<Value> = vec![];
@@ -401,6 +426,11 @@ pub fn pack(args: &Args) -> Result<Value, Fail> {
         events.push(run_event(events.len() + 1, &run, sent));
     }
     let runs = events.len();
+    let logs = state::all_logs();
+    events.extend(weeksession::events(&files, from, to, &logs, events.len() + 1));
+    let carried = carried_events(&week, events.len() + 1)?;
+    events.extend(carried);
+    let count = |k: &str| events.iter().filter(|e| e["kind"] == k).count();
 
     let dir = state::dir().map_err(|e| Fail { code: 3, msg: e })?.join("week");
     let pack_path = dir.join(&week).join("pack.json");
@@ -417,8 +447,8 @@ pub fn pack(args: &Args) -> Result<Value, Fail> {
     let mut out = json!({
         "promptu": 1, "week": week, "pack": pack_path.to_string_lossy(),
         "window": { "from": from.to_string(), "to": to.to_string() },
-        "runs": runs, "sessions": 0,
-        "events": { "run": runs, "session": 0, "unmatched": 0, "outcome": 0, "carried": 0 },
+        "runs": runs, "sessions": count("session"),
+        "events": { "run": runs, "session": count("session"), "unmatched": count("unmatched"), "outcome": count("outcome"), "carried": count("carried") },
     });
     if let Some(w) = warning {
         out["warnings"] = json!([w]);
