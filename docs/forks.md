@@ -456,7 +456,7 @@ Decision 30 says the sheet is "a Markdown file applied with `promptu week apply`
 
 **Recommendation: (a)**, then read the first four weeks' `run.json` and move the timeout to twice the slowest. Cost is still [assumed] from decision 14.
 
-### W7. How a proposed pattern is replayed — open
+### W7. How a proposed pattern is replayed — built on (b), the first-cut default (a) replaced (promptu/020)
 
 Decision 47 says to replay 3 to 5 real past prompts.
 
@@ -465,6 +465,8 @@ Decision 47 says to replay 3 to 5 real past prompts.
 - (c) A real run by the owner of each: too slow for a weekly sheet.
 
 **Recommendation: (a)** for the first cut, **(b)** once a few sheets show whether (a) catches anything. (a) cannot see a change that only alters a model fill.
+
+**Built as (b) (promptu/020):** the task asked for the pass run with the old file and the new, so fills and the pick are compared; (a) would see none of a picker or source change. Which prompts: W23. What it may cost: W24.
 
 ### W8. How long a draft is kept for the next pack — open
 
@@ -611,3 +613,23 @@ The pack's `redirects` are candidates (W2), and `week draft`'s model call record
 - (b) Have the drafter return a keep/drop per candidate and count the kept ones: closer to "redirected", costs a field in the model's reply and a judgement per candidate.
 
 **Recommendation: (a) until one real week shows how many candidates are false;** then (b). A task is a session with an owner message, the pack's unit of task start.
+
+### W23. Which past prompts a replay uses, and which lines get one — open, built on a default (promptu/020)
+
+Decision 47 says 3 to 5 real past prompts; the contract left the pick open.
+
+- **(a) The newest five distinct `original`s in the log, of runs of that pattern that began as a rough prompt (`mode` `prompt`, not a pasted brief); fewer when the log has fewer, none when it has none (the line says so). A line is replayed when its target is a `question`, `new_question` or `picker` and the proposed file's frontmatter differs from the old one's; a `template` line, a body-only change and a `new-pattern` (no old file, no past prompts) are not** — *default.* Newest prompts are the owner's current habits; a body-only change renders without a model, so a model call could answer nothing new. The model sees the rough prompt alone, with no context, desk or memory source, because the log keeps only `original` (the replay's fills from those sources are therefore absent on both sides). Questions asked counts the picked pattern's visible questions the pass did not fill, ignoring `when`.
+- (b) A spread over the week's pack events: closer to "the prompts that caused the change", but a prompt in the pack is not necessarily in the log, and the pack's quotes are meant to stay out of a replay's reach.
+- (c) The prompts of the line's own events only: the most relevant, and the most likely to pass, since the change was written to fit them.
+
+**Recommendation: (a).** The replay is one pass call per side, on the pass's own model, effort and timeout (`pass_*`), as the real run uses them.
+
+### W24. What a week's replays may cost — open, built on a default (promptu/020)
+
+The replay is a model call per prompt per side, up to ten a pattern.
+
+- **(a) `week_replay_cap_usd`, default 1.00 [assumed], counted from the cost the CLI reports across one `draft`; checked before each prompt's pair of calls, so the pair that crosses the cap finishes; 0 turns the replay off; a bad value is the default. A pattern the cap stops keeps the prompts done and says `stopped by the replay cap of $X a week after N of M prompts` on its line (`check.replay_note`, and `- replay:` in `sheet.md`)** — *default.* The drafter's own call is not counted. A call whose cost the CLI does not report counts as 0, so with such a CLI the cap cannot stop it; a count of calls would.
+- (b) A count of calls: independent of the CLI's reporting, but not "cost".
+- (c) No cap: the sheet's cost is then unbounded by the number of pattern lines.
+
+**Recommendation: (a),** and replace the 1.00 with twice the cost of the first real week's replays.
