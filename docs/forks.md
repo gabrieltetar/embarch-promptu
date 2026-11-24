@@ -602,3 +602,12 @@ Decision 45 had `week timer` write the units and `timer.json`; it now prints the
 - (c) The free text cuts the line: matches "I typed something because I objected", but loses a kept-with-a-remark answer.
 
 **Recommendation: (a).** A cut line's note can still be written in `sheet.md` (W5) or with `week mark --note`.
+
+### W22. What the friction numbers count as a redirect — open, built on a default (promptu/021)
+
+The pack's `redirects` are candidates (W2), and `week draft`'s model call records no judgement per candidate, so the sheet cannot count only the real ones.
+
+- **(a) Count every candidate** — *default.* `friction_per_prompt` is candidates per owner message and `redirects_per_task` candidates per session, for Promptu sessions, with the same figure for the non-Promptu sessions as `control`. Both groups are counted the same way, so the comparison holds even if the absolute level runs high.
+- (b) Have the drafter return a keep/drop per candidate and count the kept ones: closer to "redirected", costs a field in the model's reply and a judgement per candidate.
+
+**Recommendation: (a) until one real week shows how many candidates are false;** then (b). A task is a session with an owner message, the pack's unit of task start.

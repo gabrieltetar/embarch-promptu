@@ -365,9 +365,11 @@ fn marks(old: &Value) -> HashMap<String, (String, String)> {
         .collect()
 }
 
-/// Decision 15's checks as the pack's run events measure them. A number the
-/// pack cannot compute is left out, never zero; the friction numbers wait for
-/// the session events (EMB-274).
+/// Decision 15's five checks as the week's pack measures them (contract §10),
+/// always all five: a check with no data that week has a null `value`, never
+/// zero. The two friction checks also carry `control`, the same figure over the
+/// sessions not started with Promptu. A redirect is a candidate of the pack's
+/// session events, uncorrected by a judgement (forks W22).
 fn numbers(events: &[Value], previous: Option<&Value>) -> Vec<Value> {
     let runs: Vec<&Value> = events.iter().filter(|e| e["kind"] == "run").collect();
     let count = |k: &str, e: &Value| e[k].as_u64().unwrap_or(0) as f64;
@@ -375,18 +377,40 @@ fn numbers(events: &[Value], previous: Option<&Value>) -> Vec<Value> {
     let changed: f64 = runs.iter().map(|e| e["changed_fills"].as_array().map_or(0, Vec::len) as f64).sum();
     let patterned: Vec<&&Value> = runs.iter().filter(|e| !e["pattern"].is_null()).collect();
     let picked = patterned.iter().filter(|e| e["picked_by_owner"] == true).count() as f64;
-    let all: Vec<(&str, Option<f64>, &str)> = vec![
-        ("fills_kept", (filled > 0.0).then(|| 1.0 - changed / filled), ">= 0.90"),
-        ("patterns_kept", (!patterned.is_empty()).then(|| 1.0 - picked / patterned.len() as f64), ">= 0.85"),
-        ("questions_per_run", (!runs.is_empty()).then(|| runs.iter().map(|e| count("asked", e)).sum::<f64>() / runs.len() as f64), "falling"),
+    let sessions: Vec<&Value> = events.iter().filter(|e| e["kind"] == "session").collect();
+    // (redirects, owner messages, sessions) over the sessions with `promptu` equal to `with`.
+    let friction = |with: bool| {
+        let of: Vec<&&Value> = sessions.iter().filter(|e| (e["promptu"] == true) == with).collect();
+        let redirects: f64 = of.iter().map(|e| e["redirects"].as_array().map_or(0, Vec::len) as f64).sum();
+        let messages: f64 = of.iter().map(|e| count("owner_messages", e)).sum();
+        (redirects, messages, of.len() as f64)
+    };
+    let per_prompt = |(r, m, _): (f64, f64, f64)| (m > 0.0).then(|| r / m);
+    let per_task = |(r, _, n): (f64, f64, f64)| (n > 0.0).then(|| r / n);
+    // (check, value, control (friction checks only), target)
+    type Check = (&'static str, Option<f64>, Option<Option<f64>>, &'static str);
+    let all: Vec<Check> = vec![
+        ("friction_per_prompt", per_prompt(friction(true)), Some(per_prompt(friction(false))), "<= 0.10"),
+        ("redirects_per_task", per_task(friction(true)), Some(per_task(friction(false))), "down about 30% on the baseline"),
+        ("fills_kept", (filled > 0.0).then(|| 1.0 - changed / filled), None, ">= 0.90"),
+        ("patterns_kept", (!patterned.is_empty()).then(|| 1.0 - picked / patterned.len() as f64), None, ">= 0.85"),
+        ("questions_per_run", (!runs.is_empty()).then(|| runs.iter().map(|e| count("asked", e)).sum::<f64>() / runs.len() as f64), None, "falling"),
     ];
     let round = |x: f64| (x * 100.0).round() / 100.0;
     all.into_iter()
-        .filter_map(|(check, value, target)| {
+        .map(|(check, value, control, target)| {
             let baseline = previous.and_then(|p| p["numbers"].as_array()).and_then(|a| a.iter().find(|n| n["check"] == check)).and_then(|n| n["value"].as_f64());
-            value.map(|v| json!({ "check": check, "value": round(v), "baseline": baseline, "target": target }))
+            let mut n = json!({ "check": check, "value": value.map(round), "baseline": baseline, "target": target });
+            if let Some(c) = control {
+                n["control"] = json!(c.map(round));
+            }
+            n
         })
         .collect()
+}
+
+fn figure(v: &Value) -> String {
+    v.as_f64().map_or_else(|| "no data".to_string(), |x| x.to_string())
 }
 
 /// `sheet.md`: the sheet as Markdown, one `- [x]` line per proposal (decision 30). `week mark` and `week apply` read the boxes and the notes back (forks W5).
@@ -397,9 +421,12 @@ pub fn sheet_md(sheet: &Value) -> String {
         sheet["week"].as_str().unwrap_or(""),
         sheet["generated"].as_str().unwrap_or("")
     );
+    out.push_str("\n**Numbers** (read-only: Promptu writes these; an edit here is ignored)\n\n");
     for nr in sheet["numbers"].as_array().into_iter().flatten() {
-        out.push_str(&format!("\n- {}: {} (baseline {}, target {})", nr["check"].as_str().unwrap_or(""), nr["value"], nr["baseline"], nr["target"].as_str().unwrap_or("")));
+        let control = if nr.get("control").is_some() { format!(", control {}", figure(&nr["control"])) } else { String::new() };
+        out.push_str(&format!("- {}: {} (baseline {}{control}, target {})\n", nr["check"].as_str().unwrap_or(""), figure(&nr["value"]), figure(&nr["baseline"]), nr["target"].as_str().unwrap_or("")));
     }
+    out.push_str(&format!("\nFeel (read-only here; set with `promptu week mark --feel better|same|worse`): {}\n", sheet["feel"].as_str().unwrap_or("not set")));
     for g in sheet["groups"].as_array().into_iter().flatten() {
         out.push_str(&format!("\n## {} {}\n\n", g["id"].as_str().unwrap_or(""), g["title"].as_str().unwrap_or("")));
         for l in g["lines"].as_array().into_iter().flatten() {
@@ -662,14 +689,49 @@ mod tests {
     }
 
     #[test]
-    fn numbers_leave_out_what_the_pack_cannot_compute() {
-        assert!(numbers(&[], None).is_empty());
+    fn numbers_list_every_check_and_null_what_the_pack_cannot_compute() {
+        let n = numbers(&[], None);
+        assert_eq!(n.len(), 5);
+        assert!(n.iter().all(|x| x["value"].is_null()), "{n:?}");
+        assert!(n[0]["control"].is_null() && n[0].get("control").is_some() && n[2].get("control").is_none());
         let ev = vec![
             json!({"kind": "run", "pattern": "a", "asked": 2, "filled": 4, "changed_fills": ["x"], "picked_by_owner": false}),
             json!({"kind": "run", "pattern": "a", "asked": 4, "filled": 0, "changed_fills": [], "picked_by_owner": true}),
         ];
         let n = numbers(&ev, None);
-        let get = |c: &str| n.iter().find(|x| x["check"] == c).map(|x| x["value"].as_f64().unwrap());
-        assert_eq!((get("fills_kept"), get("patterns_kept"), get("questions_per_run")), (Some(0.75), Some(0.5), Some(3.0)));
+        let get = |c: &str| n.iter().find(|x| x["check"] == c).map(|x| x["value"].as_f64());
+        assert_eq!((get("fills_kept"), get("patterns_kept"), get("questions_per_run")), (Some(Some(0.75)), Some(Some(0.5)), Some(Some(3.0))));
+        assert_eq!((get("friction_per_prompt"), get("redirects_per_task")), (Some(None), Some(None)));
+    }
+
+    #[test]
+    fn friction_counts_promptu_sessions_and_a_control_apart() {
+        let red = |n: usize| (0..n).map(|_| json!({"text": "no", "signs": ["negation"]})).collect::<Vec<_>>();
+        let ev = vec![
+            json!({"kind": "session", "promptu": true, "owner_messages": 10, "redirects": red(1)}),
+            json!({"kind": "session", "promptu": true, "owner_messages": 10, "redirects": red(0)}),
+            json!({"kind": "session", "promptu": false, "owner_messages": 8, "redirects": red(2)}),
+            json!({"kind": "unmatched", "promptu": false}),
+        ];
+        let prev = json!({"numbers": [{"check": "friction_per_prompt", "value": 0.2}]});
+        let n = numbers(&ev, Some(&prev));
+        let c = |name: &str| n.iter().find(|x| x["check"] == name).unwrap().clone();
+        let (f, r) = (c("friction_per_prompt"), c("redirects_per_task"));
+        assert_eq!((f["value"].as_f64(), f["control"].as_f64(), f["baseline"].as_f64()), (Some(0.05), Some(0.25), Some(0.2)));
+        assert_eq!((r["value"].as_f64(), r["control"].as_f64()), (Some(0.5), Some(2.0)));
+        // Only Promptu sessions: the control is null, not zero.
+        let n = numbers(&ev[..2], None);
+        assert!(n[0]["control"].is_null() && n[0]["value"].as_f64() == Some(0.05));
+    }
+
+    #[test]
+    fn the_markdown_opens_with_the_numbers_and_the_feel_line() {
+        let sheet = json!({"week": "2026-W48", "generated": "g", "feel": null, "groups": [], "numbers": numbers(&[], None)});
+        let md = sheet_md(&sheet);
+        assert!(md.contains("**Numbers** (read-only"), "{md}");
+        assert!(md.contains("- friction_per_prompt: no data (baseline no data, control no data, target <= 0.10)"), "{md}");
+        assert!(md.contains("Feel (read-only here") && md.trim_end().ends_with("not set"), "{md}");
+        let md = sheet_md(&json!({"week": "w", "generated": "g", "feel": "better", "groups": [], "numbers": []}));
+        assert!(md.trim_end().ends_with("better"));
     }
 }
