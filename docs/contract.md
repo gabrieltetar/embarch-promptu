@@ -1,6 +1,6 @@
 # Promptu: the contract
 
-**Version 1, 2026-10-29.** The interfaces Promptu's five build steps share. Build step 1 (memory) owns §1–§5 and the memory id in §6.3; build step 2 (the terminal pass) owns §6's writer, §7 and §8; build step 3 (the chat and Start work) added `used` to §5, `prep --start` to §7.8 and `promptu patterns` (§7.9). All three are built and tested, and what §11 lists is fixed. §9–§10 are sketches: the step that builds each one fills it in and may add to it, but must not change anything §11 fixes.
+**Version 1, 2026-10-29.** The interfaces Promptu's five build steps share. Build step 1 (memory) owns §1–§5 and the memory id in §6.3; build step 2 (the terminal pass) owns §6's writer, §7 and §8; build step 3 (the chat and Start work) added `used` to §5, `prep --start` to §7.8 and `promptu patterns` (§7.9). All three are built and tested, and what §11 lists is fixed. **Build step 4 (the weekly pass, §9, §10 and §14)** is specified here before it is built (decision 3): its shapes are fixed from the day this contract says so, and the step that builds them may add to them but not change what §11 fixes. Its first-cut heuristics are provisional in [forks](forks.md) W1–W9.
 
 `[measured]` marks a fact checked against Claude Code 2.1.287 on 2026-10-29, either by running it or by reading its bundle; `[assumed]` marks one that was not. Every example is invented.
 
@@ -9,7 +9,7 @@
 - Every JSON document carries `"promptu": 1`. Adding a field keeps 1. Renaming or removing a field, or changing what one means, bumps it. Readers ignore fields they do not know.
 - Paths are absolute. A date is `YYYY-MM-DD` in local time; `PROMPTU_TODAY=YYYY-MM-DD` pins "today" for tests.
 - A command that can find problems exits 1 when it finds an error, 0 otherwise, and 2 on a usage error (a path that does not exist). Any command but `hook` exits 3 on an internal error, with one `promptu: internal error: <message> (at <file>:<line>:<column>)` line on stderr, never Rust's 101 (`hook` fails open instead, §3.6). A debug build honours `PROMPTU_DEBUG_PANIC` to reach that path in a test; a release build compiles it out.
-- No model call and no network in anything step 1 ships. Step 2's one model call is `prep`'s pass (§7.3); `lint`, `next` and `render` are model-free.
+- No model call and no network in anything step 1 ships. Step 2's one model call is `prep`'s pass (§7.3); `lint`, `next` and `render` are model-free. Step 4's one model call is `promptu week draft` (§14.2); everything else under `week` and `desk` is model-free.
 
 ## 1. Where memory lives
 
@@ -409,6 +409,7 @@ Under `PROMPTU_STATE_DIR`, else `$XDG_STATE_HOME/embarch-promptu`, else `~/.loca
 | `drafts/<run>.md` | The rendered prompt, for "edit first". Pruned with the runs. |
 | `log/<run>.json` | One entry per rendered run (decision 42): the rough prompt as typed, what landed in the draft, and what the rewrite cost; shape in §8.4. **Never pruned**: it is the record the chat's card restores from and `promptu stats` measures over. Rendering the same run again overwrites its entry, the original unchanged. |
 | `pass/` | The empty folder the model runs in. |
+| `week/` | The weekly pass's folder: one folder per ISO week, and the packed and timer records (§14.1). Never pruned. |
 
 A run id is `YYYYMMDD-HHMMSS-<4 hex>`. **The footer is the record of what a run asked** (§6); the run file is scratch and `last/` holds no more than the answers themselves ([forks](forks.md) S6). The log (decision 42) is the second record: the original and the rewrite's cost, not the questions.
 
@@ -426,6 +427,8 @@ rewrite = "on"             # on (default) · off: no rewrite after the questions
 rewrite_model = "sonnet"   # the rewrite's model: a setting, the owner's to settle (decision 42); any `claude --model` value
 rewrite_effort = "low"     # low · medium · high; anything else: low
 rewrite_timeout_s = 30     # 1–600
+
+# The weekly pass's keys (week_schedule, week_model, week_effort, week_timeout_s, week_checkout, week_public_check) are in §14.2.
 
 [embarch]                  # the optional EmbArch integration (decision 29)
 desk = "auto"              # auto · on · off
@@ -592,25 +595,42 @@ p50 and p95 (nearest rank) of `wait_ms` and of `rewrite_ms` over the logged runs
 
 **Speed** [measured 2026-10-29, release build, WSL2]: `render` p50 3.1 ms, p95 3.7 ms; `prep --offline` (everything but the model) p50 7.2 ms. The hook, re-measured with this build's larger binary: p50 0.66 ms, p95 0.81 ms spawned directly, as in §3.8.
 
-## 9. `promptu desk --json` (sketch; build step 4)
+## 9. `promptu desk --json` (build step 4)
 
-What the desk's `GET /promptu` serves, cached 60 s: `{ "promptu": 1, "open": 0 }` when nothing is open (the Desk section stays hidden), else `{ "promptu": 1, "open": 23, "week": "2026-W45", "groups": [ { "id": "g1", "title": "implement-issue", "open": 7 } ], "feel": null }`.
+What the desk's `GET /promptu` serves, which the desk caches for 60 s. Read-only, no model, no network; it reads the newest sheet (§14.1) and writes nothing. **`embarch-desk` owns the endpoint and the Desk section; this command is all they need to ask.**
 
-## 10. `sheet.json` (sketch; build step 4)
+- Nothing open (no sheet, or every line settled): `{ "promptu": 1, "open": 0 }`. The Desk section stays hidden (decision 14).
+- Else: `{ "promptu": 1, "open": 23, "week": "2026-W48", "generated": "2026-11-25T08:03:00-06:00", "groups": [ { "id": "g1", "title": "implement-issue", "open": 7 } ], "feel": null }`.
 
-One week's ✓/✕ sheet under the local learning-data folder:
+`open` counts the lines whose `status` is `open` (§10), `groups[].open` the same per group; a group with none is left out. A superseded sheet (decision 46) is never read. Exit 0, also with no sheet; 3 on an internal error. The text form is one line, `promptu: 23 open (2026-W48)` or nothing.
+
+**What the other scopes need, and no change is made to them here.** `embarch-desk`: run `promptu desk --json` for `GET /promptu`, and `promptu week show --json`, `week mark` and `week apply` (§14.4) for the section's list, its ✓/✕ and its apply button; Promptu not installed means no section (`embarch-desk` decision 67's detection). `embarch-chat`'s Promptu card (decision 14, 2026-11-07): `promptu week status --json` for next run and missed run (decision 45) and `promptu desk --json` for the open count. `embarch-ui` has no call of its own: what it shows comes through the desk's endpoint.
+
+## 10. `sheet.json` (build step 4)
+
+One week's ✓/✕ sheet, `week/<week>/sheet.json` (§14.1), written by `promptu week draft` and changed afterwards only by `week mark` and `week apply`:
 
 ```json
-{ "promptu": 1, "week": "2026-W45", "generated": "2026-11-04T08:03:00-06:00", "feel": null,
-  "numbers": [ { "check": "friction_per_prompt", "value": 0.12, "baseline": 0.14, "target": "<= 0.10" } ],
+{ "promptu": 1, "week": "2026-W48", "generated": "2026-11-25T08:03:00-06:00", "feel": null,
+  "superseded_by": null, "supersedes": "2026-W47",
+  "numbers": [ { "check": "fills_kept", "value": 0.93, "baseline": 0.90, "target": ">= 0.90" } ],
   "groups": [ { "id": "g1", "kind": "pattern", "pattern": "implement-issue", "title": "implement-issue — 7: 4 questions, 2 template, 1 picker", "cut": false,
-                "lines": [ { "id": "l1", "verdict": "approve", "note": "", "target": { "pattern": "implement-issue", "question": "done" },
+                "lines": [ { "id": "l1", "kind": "pattern", "verdict": "approve", "note": "",
+                             "target": { "kind": "question", "pattern": "implement-issue", "question": "done" },
                              "change": "add option", "text": "add option \"Builds + flash + boot log\"", "count": 2,
-                             "events": [ { "kind": "friction", "gap": "G10", "cost_msgs": 38 } ],
-                             "proposed": "proposed/implement-issue.md", "status": "open", "error": null } ] } ] }
+                             "events": [ "e14", "e22" ], "carried_from": null,
+                             "proposed": "proposed/implement-issue.md",
+                             "check": { "lint": "ok", "examples": "ok", "replay": [ { "run": "20251118-091500-3fa1", "questions_before": 5, "questions_after": 5 } ] },
+                             "status": "open", "error": null, "commit": null } ] } ] }
 ```
 
-`kind`: `pattern` · `memory` · `new-pattern` · `external` · `no-change`. `verdict`: `approve` (the default: a line stands unless cut) or `cut`. `status`: `open` · `applied` · `failed` (`error` says why, such as a denylist hit). A `memory` line's change is a whole topic file plus its index line, applied through the §3 checks. Event detail that quotes the owner's prompts stays local and never reaches a public repository.
+- **Every pack event is in some line's `events`** (§14.5), the sheet being the account of the week: an event the drafter proposed no change for is a `no-change` line with its reason in `text`. A line's `events` are event ids of the pack; the quotes stay in the pack.
+- **`kind`** (line and group): `pattern` · `memory` · `new-pattern` · `external` · `no-change`. `external` is a change outside Promptu's files (a global `CLAUDE.md` rule, another repo's doc): it is shown, never applied, and is `applied` only when the owner marks it so with `week mark`.
+- **`target.kind`** names what a `pattern` or `new-pattern` line changes (decision 14): `question` (an existing one's options, wording, default or `when`), `new_question`, `template` (a section's text), `picker` (`signals`, `description`, `desk`, the default pick) or, for `new-pattern`, `pattern` (a whole new file). A `memory` line's target is `{ "kind": "memory", "project": "<§1.2 folder name>", "file": "<topic file>" }`; a specific, stable fact is a memory line and never goes into a pattern, so patterns stay generic (decision 14).
+- **`verdict`**: `approve` (the default: a line stands unless cut) or `cut`. A group's `cut: true` cuts every line in it. **`status`**: `open` · `applied` · `failed` · `cut`; `week mark ... cut` sets `cut`, `week apply` sets `applied` or `failed` (`error` says why: a lint failure, a public-safety hit, a failed memory check), and an `applied` pattern line's `commit` is the SHA (`null` with no checkout, §14.2). A `failed` line stays on the sheet, is retried by the next `apply`, and carries into the next sheet like an open one.
+- **`check`** is the first cut's test of a proposed pattern change (decision 47): `lint` and `examples` are `promptu lint --show` on the proposed pattern set; `replay` re-runs up to five of the week's real runs of that pattern, taken from the pack, through `prep --offline` with the proposed set, and records the questions before and after ([forks](forks.md) W7). `null` on a `memory`, `external` or `no-change` line.
+- **`numbers`** are decision 15's checks as the week measured them: `check` is `friction_per_prompt`, `redirects_per_task`, `fills_kept`, `patterns_kept`, `questions_per_run`; `value`, `baseline` (the previous sheet's value, `null` on the first) and `target` (the owner's, text); a number the pack cannot compute is left out, never zero. **`feel`** is `better`, `same`, `worse` or `null`, set by `week mark --feel`.
+- **A `memory` line's change** is a whole topic file plus its index line, shown in `proposed/<file>`; `apply` writes it to the memory folder through the §3 checks and a check error makes the line `failed` ([forks](forks.md) W4). Event detail that quotes the owner's prompts stays local and never reaches a public repository: the sheet, the pack and `proposed/` are under the state folder only (§14.1), and a pattern line's text is generic by the rule above, so a proposed pattern reaches the checkout only after the public-safety command (§14.2).
 
 ## 11. What later steps may change
 
@@ -618,7 +638,8 @@ One week's ✓/✕ sheet under the local learning-data folder:
 - **May grow:** new checks with new ids, new flags, new fields in any JSON document, new footer fields placed after `pick` (readers ignore unknown fields), new lint checks, new config keys, new sources.
 - **From step 3, fixed:** `used` and `used_claude_md`'s item shape and what counts as a use (§5), `promptu patterns`' JSON (§7.9), and `prep --start` with its output fields `start` and `pattern.start_default` (§7.8).
 - **From decision 42, fixed:** `promptu original`'s output and exit codes (§8.5), the log entry's fields (§8.4), the footer's `rewritten=yes`. `stats`' output may grow.
-- **Open until built:** §9–§10, within §0's rules.
+- **From step 4, fixed:** the `week` commands' names, arguments, exit codes and the shape of their JSON (§14.4), `promptu desk --json` (§9), `sheet.json`'s fields, `kind`s, `verdict`s and `status`es (§10), the week folder's layout and each file's name (§14.1), the config keys' names and meaning (§14.2), the pack's record kinds and their fields (§14.5), and the timer units' names (§14.4). The first cut's heuristics, marked provisional in [forks](forks.md) W1–W9, are not fixed: they may change behind these shapes.
+- **Open until built:** nothing in §9–§10 and §14; step 4 may add to them within §0's rules.
 
 ## 12. `promptu calls <session> [--subagent <id>] [--class <name>] [--json]`
 
@@ -643,3 +664,134 @@ Read-only: lists what the earlier runs of a prompt asked and were answered, so a
 **Match.** A transcript belongs to the prompt when its first user turn (the owner's own, not meta, not a sidechain) is the prompt: the text equal after `\r\n` folding and trimming; or, when the file is only a footer line, a first turn whose last non-empty line is that footer. The footer carries no run id, so the text is the match. A **near-match** (the first turn ends in the same footer under other text: the prompt edited) is not listed; the text view says how many on stderr and `--json` carries `near_matches`.
 
 **Output.** Sessions oldest first by the first turn's `timestamp`. Per session, each `AskUserQuestion` call in order: its questions (`question`, `header`, `options` as `label` and `description`, `multi_select`) and `answer`, the text of the `tool_result` with that call's `tool_use_id` (`null` when the session ended first). No other tool's output is read into it. `--json`: `{"sessions": [{"session", "started", "calls": [{"questions", "answer"}]}], "near_matches": n}`. Exit 0, also with no match; 2 for an unreadable prompt file or folder.
+
+## 14. `promptu week`: the weekly pass (build step 4)
+
+The weekly pass reads a week's runs and sessions, drafts one ✓/✕ sheet of proposed changes (decision 14), and applies what the owner approves (decisions 30, 43). **Step 4's first cut** (decision 47) tests a proposed pattern change by re-rendering its examples and replaying real past prompts, and counts a commit as the only outcome. Everything but `week draft` is model-free; **`draft` is the pass's only model call** (one stripped `claude -p`, §14.2), so `pack`, `status`, `show`, `mark`, `apply`, `timer` and `desk` run offline.
+
+Every command takes `--json` (default is text), prints `"promptu": 1` in it, and exits per §0: 0 done; 1 a drafter run failed or an `apply` left a line `failed`; 2 a usage error (an unknown week or line id, no open sheet where one is needed, a bad `--week` or schedule); 3 an internal error. `--week` is an ISO week `YYYY-Www`, local time, Monday first; it defaults to the week of `PROMPTU_TODAY`/today.
+
+### 14.1 State: the week folder
+
+Beside §7.5's paths, under the same state folder:
+
+| Path | What |
+|---|---|
+| `week/<week>/pack.json` | The week's events (§14.5), written by `pack`. Quotes the owner's prompts: **local, never in a repository.** Rewritten by a second `pack` for the same week. |
+| `week/<week>/run.json` | The run record: `{ "promptu": 1, "week", "kind": "scheduled"\|"manual", "scheduled_for": "<instant>"\|null, "started", "finished", "status": "ok"\|"failed", "error": null, "model", "events": 41, "lines": 12 }`. `status` is `failed` when the drafter times out, exits non-zero or returns nothing that parses; the sheet is then not touched. |
+| `week/<week>/sheet.json` | The sheet (§10). The record of what the owner decided. |
+| `week/<week>/sheet.md` | A read-only Markdown view of the sheet, one `- [x]` line per proposal with its id, for a terminal reader (decision 30); rewritten on every `draft`, `mark` and `apply`. Editing it changes nothing ([forks](forks.md) W5). |
+| `week/<week>/proposed/<name>.md` | A proposed pattern file (whole), or a memory line's topic file. |
+| `week/<week>/patterns.patch` | With no checkout configured, the approved pattern lines as one patch (decision 43). |
+| `week/packed.json` | `{ "promptu": 1, "through": "2026-11-23" }`: the last date a successful `pack` covered. `prep`'s prune keeps a run's draft until `through` passes the run's date, and at most 35 days ([forks](forks.md) W8): a draft is the terminal run's edit baseline (decision 44). |
+| `week/timer.json` | `{ "promptu": 1, "installed": "<instant>", "schedule": "wed 08:00" }`, written by `week timer`; `missed` counts only scheduled instants after `installed` (§14.4). |
+
+**The open sheet** is the newest week folder whose `sheet.json` has `superseded_by: null`. A new `draft` sets `superseded_by` on the earlier open sheet and `supersedes` on its own, and re-proposes the earlier sheet's `open` and `failed` lines among its own, with `carried_from: "<week>:<line id>"` and their old events added to the pack's (decision 46); a `cut` line is not carried. A second `draft` for the same week replaces that week's sheet and keeps each line's `verdict` and `note` where the target and change are the same.
+
+### 14.2 Configuration
+
+In `config.toml` (§3.7), beside §7.6's keys; `PROMPTU_WEEK_SCHEDULE` in the environment wins over `week_schedule`, as `PROMPTU_MEMORY_HOOK` does over its key. A bad value falls back to its default and `week status` says so in `warnings`.
+
+```toml
+week_schedule = "wed 08:00"   # <mon|tue|wed|thu|fri|sat|sun> <HH:MM>, local time (decision 45)
+week_model = "opus"           # the drafter's model: any `claude --model` value (decision 14)
+week_effort = "medium"        # low · medium · high; anything else: medium
+week_timeout_s = 900          # 60–3600 ([forks](forks.md) W6)
+week_checkout = "/path/to/embarch-promptu"   # the checkout a pattern change is committed in (decision 43); absent: a patch
+week_public_check = "scripts/check-client-names.py --repo {checkout}"   # run in week_checkout, first; absent: none
+```
+
+- **Where an approved pattern change lands** (decision 43). `week_checkout` is a git checkout of the patterns' repo; `apply` creates the branch `promptu/week-<week>` from its current `HEAD` (or checks it out, when the week was applied before), writes each approved `pattern` or `new-pattern` line to `patterns/`, bumps the pattern's `version` by one, runs `promptu lint` on the folder, re-renders the examples, runs `week_public_check` (its non-zero exit fails the line, and the text it prints is the line's `error`), then makes one commit per line (`promptu: <title> (<week> <line id>)`). **Nothing is pushed**, `main` is never touched, and a dirty checkout stops `apply` before it writes (exit 1, nothing changed). With no `week_checkout`, `apply` writes `patterns.patch` and the line's `commit` stays `null`. `{checkout}` in the command is replaced; the command runs without a shell.
+- **The drafter** is `claude -p` with no tools, no plugins and no settings, in the empty `pass/` folder, as the §7.3 pass runs, given the pack and the current pattern files on stdin and asked for the sheet's lines as JSON. Its output is guarded like a fill (decision 10): a line's `events` must be pack event ids, a `target` must name a pattern or question that exists (or `new_question` / `pattern`), a `memory` line's file must pass §2 and §3's checks, and a line that fails is dropped and counted in `run.json`. Any pack event no surviving line holds is added as a `no-change` line with its reason `not addressed`, so **every event becomes a proposal** (decision 14).
+- **Cost** about $1.5–3 a week [assumed, decision 14]; `run.json` records it only when the CLI reports it.
+
+### 14.3 What a proposal is
+
+Every event (§14.5) ends in one line of the sheet. By event: a run whose questions were skipped, overridden or edited → a `question`, `new_question`, `template` or `picker` change to its pattern; a session that went wrong after a footer-less start (an unmatched task start) → a `new-pattern` or a `picker` change that would have matched it; friction naming a specific, stable fact (a path, a tool's flag, a name) → a `memory` line; anything the drafter judges not worth a change → `no-change`; anything about the owner's own setup → `external`. **A specific, stable fact becomes a memory line, so patterns stay generic** (decision 14): the drafter is told so, and a proposed pattern passes `promptu lint` (§7.7) before it is a line.
+
+### 14.4 The commands
+
+#### `promptu week pack [--week <week>] [--projects <dir>] [--json]`
+
+Reads `log/*.json`, `drafts/`, the transcripts of §5 (`<config home>/projects/*/*.jsonl`, top-level files, last modified within 30 days, never an `isSidechain` record, same reader as `used`; `--projects` replaces the folder), the pattern set, and the open sheet. Writes `week/<week>/pack.json` and `week/packed.json`. **No model, no network.** The week's window is the seven local days before the run's day (for a past `--week`, before that week's Monday plus the schedule's weekday), plus the carried events of §14.1 ([forks](forks.md) W1). Output: `{ "promptu": 1, "week", "pack": "<path>", "window": {"from","to"}, "runs": 31, "sessions": 18, "events": { "run": 31, "session": 18, "unmatched": 4, "outcome": 6, "carried": 3 } }`. Exit 0; 2 for a bad `--week` or an unreadable `--projects`.
+
+#### `promptu week draft [--week <week>] [--pack <path>] [--json]`
+
+Reads the pack (the week's, or `--pack`; a missing one is built first, as `pack` does), runs the drafter (§14.2), guards its lines, runs the first cut's checks for each pattern line (§10 `check`), writes `sheet.json`, `sheet.md`, `proposed/` and `run.json`, and supersedes the earlier open sheet (§14.1). On a drafter failure it writes `run.json` with `status: "failed"`, leaves every sheet as it was and exits 1. Output: `{ "promptu": 1, "week", "status": "ok", "sheet": "<path>", "lines": 12, "dropped": 1, "supersedes": "2026-W47" }`. A run with no events at all writes a sheet with no lines and exits 0.
+
+#### `promptu week run [--week <week>] [--scheduled] [--json]`
+
+`pack`, then `draft`, as one run: **what the timer's service runs**, with `--scheduled`, which sets `run.json`'s `kind` and `scheduled_for`. Output is `draft`'s with `pack`'s counts added. Exit 1 when either part fails.
+
+#### `promptu week status [--json]`
+
+Read-only; **what the chat asks, so it never asks the scheduler** (decision 45). `{ "promptu": 1, "schedule": "wed 08:00", "timer": { "installed": true, "installed_at": "…" }, "last": { "week", "started", "finished", "status", "error" } | null, "next": "2026-12-02T08:00:00-06:00", "missed": false, "missed_since": null, "open": 23, "sheet": { "week", "generated" } | null, "warnings": [] }`. `next` is the first instant after now that is the schedule's weekday and time, local. **`missed`**: let S be the latest scheduled instant at or before now and after `timer.installed`; it is true when now is at least two hours past S ([forks](forks.md) W9) and no `run.json` has `started` at or after S (a `failed` run is not missed: `last.status` says it failed). With no timer installed, `next` is still computed and `missed` is `false`. Exit 0, always.
+
+#### `promptu week show [--week <week>] [--json]`
+
+Read-only. The open sheet by default (or the week's own, which may be superseded or settled): `--json` prints `sheet.json` as it is; the text form is `sheet.md`. Exit 0; 2 for an unknown week or no sheet at all.
+
+#### `promptu week mark <id>... [--verdict approve|cut] [--note <text>] [--feel better|same|worse] [--week <week>] [--json]`
+
+`<id>` is a line id (`l1`) or a group id (`g1`, which sets `cut` on the group and every line in it). `--verdict` defaults to `cut`; `approve` undoes a cut on an `open` line. `--feel` sets the sheet's `feel` and takes no id. A `cut` sets the line's `status` to `cut`; marking a line `applied` or `failed` is refused (exit 2). It rewrites `sheet.json` and `sheet.md`. Output: the changed lines, `{ "promptu": 1, "week", "changed": [ { "id", "verdict", "status" } ], "open": 21 }`. Exit 0; 2 for an unknown id, a settled week, or a superseded sheet.
+
+#### `promptu week apply [--week <week>] [--dry-run] [--json]`
+
+Applies every `open` or `failed` line whose verdict is `approve`, in sheet order, on the open sheet (decisions 30, 43): `pattern` and `new-pattern` lines as §14.2 says, `memory` lines by writing the topic file and its index line into the project's memory folder and running the §4 checks on both (a check error makes the line `failed`), `external` and `no-change` lines left `open` until marked. It sets each line's `status`, `error` and `commit`, rewrites `sheet.json` and `sheet.md`, and **pushes nothing**. `--dry-run` runs the lint, the examples and the public-safety command on a temporary copy and writes nothing. Output: `{ "promptu": 1, "week", "applied": 5, "failed": 1, "skipped": 0, "branch": "promptu/week-2026-W48" | null, "patch": "<path>" | null, "lines": [ { "id", "status", "commit", "error" } ] }`. Exit 0 when no line failed; 1 when one did; 2 for no open sheet.
+
+#### `promptu week timer [--print] [--remove] [--json]`
+
+Writes the systemd user units from `week_schedule` (decision 45): `~/.config/systemd/user/promptu-week.timer` (`OnCalendar=Wed *-*-* 08:00:00`, `Persistent=true`) and `promptu-week.service` (`ExecStart=<this binary> week run --scheduled`, `Type=oneshot`), runs `systemctl --user daemon-reload` and `enable --now promptu-week.timer`, and writes `week/timer.json`. Run again after the schedule changes: it overwrites both units. `--print` prints the two units and writes nothing; `--remove` disables the timer, deletes the units and `timer.json`. Linux with systemd only: elsewhere it exits 2 with one line, and `status` still works. Output: `{ "promptu": 1, "schedule", "timer": "<path>", "service": "<path>", "enabled": true }`. Exit 0; 1 when `systemctl` fails (the units stay written); 2 for a bad schedule or no systemd.
+
+#### `promptu desk --json`
+
+§9.
+
+### 14.5 The pack's records
+
+`pack.json` is `{ "promptu": 1, "week", "window": { "from", "to" }, "built": "<instant>", "events": [ … ] }`, one record per event, each with a pack-unique `id` (`e1`…, in window order) and a `kind`. **Every record is read from the log, the drafts and the transcripts; nothing is judged by a model.** A record's quotes are the owner's own words, so the file stays local (§14.1).
+
+**`run`**: a rendered run from `log/` whose `date` is in the window (decision 44).
+
+```json
+{ "id": "e1", "kind": "run", "run": "20251118-091500-3fa1", "date": "2025-11-18", "project": "-home-u-work-app",
+  "pattern": "implement-issue", "version": 4, "mode": "prompt", "rewritten": true,
+  "footer": "— promptu implement-issue@4 asked=… filled=… skipped=…", "asked": 3, "filled": 2, "skipped": 1, "assumed": 0,
+  "changed_fills": ["flash"], "picked_by_owner": false,
+  "sent": { "source": "transcript", "session": "5b1c…", "at": "2025-11-18T09:16:40-06:00", "text": "…", "edit": "edited" } }
+```
+
+`asked`, `filled`, `skipped`, `assumed` are the footer's counts (§6.1); `changed_fills` the `!` fills; `picked_by_owner` is `pick=owner`. **`sent`** is how the run's sent prompt was found (decision 44): the first owner message after the log's time, in a session of that project (its main checkout, §1.2), carrying the same footer line (`source: "transcript"`); a tie goes to the text closest to the log's `rendered`; if none, a terminal run's draft file (`source: "draft"`, its text the draft's); else `sent` is `null`. `edit` is `unchanged` (equal to `rendered` after trimming and folding line breaks), `edited`, or `unknown` when `sent` is `null`. The match is a heuristic on two identical quick runs in one project, and the record says `"tie": true` when it chose between candidates.
+
+**`session`**: a session of the window's projects with a task start.
+
+```json
+{ "id": "e2", "kind": "session", "session": "5b1c…", "project": "-home-u-work-app", "started": "2025-11-18T09:16:40-06:00", "ended": "2025-11-18T11:02:10-06:00",
+  "owner_messages": 14, "pattern": "implement-issue", "run": "20251118-091500-3fa1", "promptu": true,
+  "interrupts": 2,
+  "redirects": [ { "at": "2025-11-18T09:31:02-06:00", "after_assistant_messages": 6, "text": "no, the other repo", "signs": ["interrupt", "negation"] } ] }
+```
+
+`promptu` is true when the session's task start carried a footer other than `none` (`pattern` and `run` then name it); a session without one is the control group for decision 15. `interrupts` counts owner records that are Claude Code's interrupt marker. **`redirects`** are the model-free candidates for "friction": an owner message after the first that follows an interrupt or opens with a negation or correction phrase (the signs list says which); the drafter judges whether each was real ([forks](forks.md) W2). A session with no owner messages is skipped.
+
+**`unmatched`**: a task start no pattern covered.
+
+```json
+{ "id": "e3", "kind": "unmatched", "session": "7d20…", "project": "-home-u-work-app", "at": "2025-11-19T14:02:11-06:00",
+  "text": "…", "why": "no_footer", "words": 38 }
+```
+
+A session's first owner message (not `isMeta`, not a sidechain) with no `— promptu ` footer line (`why: "no_footer"`) or the footer `none` (`why: "footer_none"`), and over ten words, so a one-line question is not a task start.
+
+**`outcome`**: the first cut's only outcome (decision 47), a commit.
+
+```json
+{ "id": "e4", "kind": "outcome", "session": "5b1c…", "run": "20251118-091500-3fa1", "type": "commit",
+  "repo": "/home/u/work/app", "commits": 2, "first": "9f3a1c2", "at": "2025-11-18T10:48:00-06:00" }
+```
+
+A commit in the session's `cwd` checkout by the owner's `git config user.email`, dated between the session's start and its end plus one hour; one record per session with at least one, `commits` counting them ([forks](forks.md) W3). A session with a pattern and no commit has no outcome record, and the sheet's numbers say how many; that absence is not a failure, since many tasks are not commits. A PR merged or a study passed are later outcomes, each its own issue (decision 47).
+
+**`carried`**: an event from an earlier open sheet, re-proposed (decision 46): `{ "id": "e5", "kind": "carried", "from": "2026-W47:l3", "events": [ <the earlier line's event records, quotes included> ] }`.
+
+The pack's counts feed `numbers` (§10): `fills_kept` is one minus the share of `filled` entries marked `!`; `patterns_kept` is one minus the share of runs with `pick=owner`; `questions_per_run` the mean of `asked`; `friction_per_prompt` the redirects the drafter kept per owner prompt in `promptu` sessions, against the same in the others as the control (decision 15); `redirects_per_task` the redirect count per session.

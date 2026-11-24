@@ -1,6 +1,6 @@
 # Promptu: design forks for the owner
 
-Choices the approved design does not settle, met while building. **No agent decides one.** An open fork runs on a provisional default, the most reversible one, until the owner picks; the default is marked. Ranked by consequence within each step. Step 1 (memory): F1–F10. Step 2 (the terminal pass): S1–S8. Step 3 (the chat, desk Start work, the Memory menu): P1–P15, at the end.
+Choices the approved design does not settle, met while building. **No agent decides one.** An open fork runs on a provisional default, the most reversible one, until the owner picks; the default is marked. Ranked by consequence within each step. Step 1 (memory): F1–F10. Step 2 (the terminal pass): S1–S8. Step 3 (the chat, desk Start work, the Memory menu): P1–P19. Step 4 (the weekly pass): W1–W9, at the end.
 
 **Decided by the owner on 2026-10-29:** F1 (a), F2 (b), F3 (d) in `embarch-umbrella`, F4 (b); each is marked below and recorded as a numbered decision in `embarch-doc/embarch-promptu/decisions.md`. **F5–F10 are open.**
 
@@ -392,3 +392,94 @@ Review F13: a single-select pre-fill whose Other text is cleared, with no option
 - (c) Snap it back to the source's own as it empties. Fights the owner while he retypes.
 
 **Recommendation: (a)**: the pre-fill was already an answer, so keeping it is no guess, and the page is never blocked on a field he only touched.
+
+## Step 4: the weekly pass (EMB-272, 2026-11-23)
+
+The owner's answers to step 4's five questions are decisions 43–47. The choices below were left to the contract unit; **all nine are open and run on their provisional default**, the most reversible, until the owner picks. Ranked by consequence. Contract §14 fixes the shapes; each of these changes only what runs behind them.
+
+### W1. What a week's window is — open
+
+Decision 46 re-proposes open lines, but the pack's own window is unsaid.
+
+- **(a) The seven local days before the run's day, plus carried events** — *provisional default.* A Wednesday run reads the previous Wednesday to Tuesday, ISO week id of the run's day.
+- (b) Everything since the last successful `pack` (`week/packed.json`'s `through`), capped at the transcripts' 30 days. A missed week is caught up and nothing is read twice.
+- (c) A calendar week, Monday to Sunday.
+
+**Recommendation: (b)**: a missed run (decision 45) then loses nothing. It was not made the default because the first run has no `through` and the window then needs its own rule; (a) is the same on a healthy week.
+
+### W2. How friction is detected before the model sees it — open
+
+The pack is model-free, so "redirected message" needs a mechanical candidate rule.
+
+- **(a) An owner message after the first that follows an interrupt, or opens with a negation or correction phrase; the drafter judges each** — *provisional default.* The phrase list is in the code, lint-free and generic.
+- (b) Every owner message after the first is a candidate: nothing is missed, and the drafter reads about three times the text.
+- (c) Only messages after an interrupt: precise, misses a typed "no, not that".
+
+**Recommendation: (a)**, then compare with (b) on one real week before trusting `friction_per_prompt`. The phrase list is `[assumed]`, not measured.
+
+### W3. What counts as an outcome — open
+
+Decision 47 fixes the first cut as a commit; how one is tied to a session is open.
+
+- **(a) A commit in the session's `cwd` checkout by the owner's `git config user.email`, between the session's start and its end plus one hour** — *provisional default.*
+- (b) The same, but only commits whose message names the session's work item key.
+- (c) Any commit in the checkout in the window, session or not.
+
+**Recommendation: (a).** (b) misses commits with no key, and (c) credits a pattern for the owner's other work. Two sessions at once in one checkout share their commits; the record says `commits`, never which.
+
+### W4. Where an approved memory line lands — open
+
+Decision 43 settles pattern lines. A memory line changes a file Claude Code reads on every session.
+
+- **(a) Written directly into the project's memory folder, through the §3 and §4 checks, on `apply`** — *provisional default.* The owner approved the line; the files are his, outside every repo.
+- (b) Written to `proposed/` and left for the owner to move by hand: nothing reaches memory unseen, and nothing learnt is applied without a second step.
+- (c) Offered as a prompt to Claude in the project, which writes it under the `CLAUDE.md` labels rule.
+
+**Recommendation: (a).** A ✓ on a sheet is already the review; (b) is the step decision 43 rejected for patterns ("leaves nothing learnt reaching a pattern").
+
+### W5. Is `sheet.md` an input — open
+
+Decision 30 says the sheet is "a Markdown file applied with `promptu week apply`".
+
+- **(a) A read-only view; marks go through `week mark`, which the `/promptu:review` skill and the Desk call** — *provisional default.* One source of truth, `sheet.json`.
+- (b) The owner edits the `- [x]` boxes in `sheet.md`, and `apply` reads them. Matches decision 30's wording, but needs a merge when the Desk and the file disagree.
+
+**Recommendation: (a)**, with (b) added later as a reader of the boxes into `mark`, if the owner wants to edit in a text editor.
+
+### W6. The drafter's limits — open
+
+- **(a) `week_model = "opus"`, effort `medium`, `week_timeout_s = 900`** — *provisional default.* Opus is decision 14's; the effort and the time are not measured.
+- (b) Effort `high`, timeout 1800.
+- (c) Sonnet, as the pass uses: cheaper, and the owner has not seen its sheets.
+
+**Recommendation: (a)**, then read the first four weeks' `run.json` and move the timeout to twice the slowest. Cost is still [assumed] from decision 14.
+
+### W7. How a proposed pattern is replayed — open
+
+Decision 47 says to replay 3 to 5 real past prompts.
+
+- **(a) Offline: up to five of the week's real runs of that pattern, re-planned by `prep --offline` with the proposed set, comparing the questions asked before and after** — *provisional default.* No model, deterministic, testable.
+- (b) With the model: each replay runs the pass and `render`, so fills are compared too. About five model calls a pattern line.
+- (c) A real run by the owner of each: too slow for a weekly sheet.
+
+**Recommendation: (a)** for the first cut, **(b)** once a few sheets show whether (a) catches anything. (a) cannot see a change that only alters a model fill.
+
+### W8. How long a draft is kept for the next pack — open
+
+A terminal run's edit is read from its draft (decision 44), which `prep` prunes after 7 days.
+
+- **(a) Until a pack has covered its date, at most 35 days** — *provisional default.*
+- (b) Seven days as now, which loses the edits of a week skipped or failed.
+- (c) Never pruned, as `log/` is.
+
+**Recommendation: (a).** Drafts are small; (c) keeps every prompt the owner sent to Claude for ever.
+
+### W9. What counts as a missed run — open
+
+Decision 45 says `status` computes it; the grace is open.
+
+- **(a) The latest scheduled instant S after the timer was installed has passed by two hours with no run started at or after S; a failed run is not missed** — *provisional default.* `Persistent=true` runs on wake, usually within minutes.
+- (b) Grace zero: any gap is missed.
+- (c) A failed run counts as missed.
+
+**Recommendation: (a).** Two hours is an assumed value; a laptop that wakes at 09:00 should not read as missed.
