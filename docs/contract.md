@@ -746,6 +746,12 @@ Applies every `open` or `failed` line whose verdict is `approve`, in sheet order
 
 **Prints** the two systemd user units built from `week_schedule` (decision 45) and **installs nothing**: `promptu-week.timer` (`OnCalendar=Wed *-*-* 08:00:00`, `Persistent=true`, `Unit=promptu-week.service`) and `promptu-week.service` (`Type=oneshot`, `ExecStart=<this binary's own path> week run --scheduled`, quoted when the path holds a space), then the commands that save them under `~/.config/systemd/user/` and enable the timer. Turning it on is the owner's step (README). Run again after the schedule changes and save the units over the old ones. `--enabled` also writes `week/timer.json` (§14.1), Promptu's own record of when the timer was turned on, which `status` needs for `missed`; it touches nothing outside the state folder ([forks](forks.md) W20). Output: `{ "promptu": 1, "schedule", "service_name", "timer_name", "service", "timer", "recorded", "warnings"? }`. Exit 0; 3 for an internal error. A bad schedule falls back to the default with a warning, as `status` does. Any other scheduler runs `promptu week run` itself.
 
+#### The review skill (`/embarch-promptu:review`)
+
+**What the user types, exactly: `/embarch-promptu:review`.** Claude Code names a plugin's skill `<plugin>:<skill>`; the plugin is `embarch-promptu` and the skill's folder is `plugin/skills/review/`, so `/embarch-promptu:review` is the string to type or to put, unsent, in a new chat (decision 30 wrote `/promptu:review` before the plugin's name was settled). `disable-model-invocation: true`: it runs only when typed.
+
+It works with or without the Desk. Steps: `week show --json`; per group, `AskUserQuestion` pages of at most four lines (`Keep ✓` or `Cut ✕`, a typed note kept on the line, [forks](forks.md) W21), each answer recorded with `week mark`; `week mark --feel`; then, after a confirmation, `week apply --json`, showing `applied`, `failed`, each failed line's `error` and where a pattern change landed. A `no-change` line, and any line not `open` or `failed`, is not asked. Its `allowed-tools` are `promptu week show`, `week mark` and `week apply` only. **A missing binary or a failing command is one line on screen and the skill stops**; a failed `mark` stops before `apply`, and marks already recorded stay.
+
 #### `promptu desk --json`
 
 §9.

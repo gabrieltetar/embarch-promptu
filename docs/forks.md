@@ -441,7 +441,7 @@ Decision 43 settles pattern lines. A memory line changes a file Claude Code read
 
 Decision 30 says the sheet is "a Markdown file applied with `promptu week apply`".
 
-- **(a) `sheet.md` is a view; marks go through `week mark`, which the `/promptu:review` skill and the Desk call** — *provisional default.* One source of truth, `sheet.json`.
+- **(a) `sheet.md` is a view; marks go through `week mark`, which the `/embarch-promptu:review` skill and the Desk call** — *provisional default.* One source of truth, `sheet.json`.
 - (b) The owner edits the `- [x]` boxes in `sheet.md`, and `apply` reads them. Matches decision 30's wording, but needs a merge when the Desk and the file disagree.
 
 **Recommendation: (a)**, with (b) added later as a reader of the boxes into `mark`, if the owner wants to edit in a text editor.
@@ -592,3 +592,13 @@ Decision 45 had `week timer` write the units and `timer.json`; it now prints the
 - (c) The first `week run --scheduled` writes it: no extra step, but a timer that never fires is never noticed as missed.
 
 **Recommendation: (a).** Without it `status` reports `timer: not installed` and `missed: false`, which is wrong only for an owner who skipped the step.
+
+### W21. What a typed answer means in the review skill — open, built on a default (promptu/023)
+
+`AskUserQuestion` gives each question a free-text "Other" beside its options, and a line has a verdict and a note.
+
+- **(a) Options `Keep ✓` and `Cut ✕`; the free text is a note on a kept line** — *provisional default.* A cut needs no reason on the sheet, and a note is most often a remark on something the owner wants applied.
+- (b) A third option `Cut ✕ with a note`: a cut can carry its reason, but every page grows a third choice.
+- (c) The free text cuts the line: matches "I typed something because I objected", but loses a kept-with-a-remark answer.
+
+**Recommendation: (a).** A cut line's note can still be written in `sheet.md` (W5) or with `week mark --note`.

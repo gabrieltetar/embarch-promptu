@@ -122,11 +122,13 @@ promptu week timer --enabled   # lets `week status` know when, so it can report 
 
 The schedule is `week_schedule` in `config.toml` (default `wed 08:00`, local time; `Persistent=true` runs a missed one at the next login). After changing it, save the units again. Moving the binary changes `ExecStart`, so do the same.
 
-**Any other scheduler** (cron, launchd, Task Scheduler): run `promptu week run --scheduled` at the time you want. Exit 0 is a sheet written, 1 a failed pack or drafter, 4 another run in progress. Then `promptu week show`, `week mark` and `week apply`, or the `/promptu:review` skill.
+**Any other scheduler** (cron, launchd, Task Scheduler): run `promptu week run --scheduled` at the time you want. Exit 0 is a sheet written, 1 a failed pack or drafter, 4 another run in progress. Then `promptu week show`, `week mark` and `week apply`, or the review skill below.
+
+**Review a sheet without EmbArch.** In Claude Code with the plugin installed, type `/embarch-promptu:review`. It reads the sheet, asks ✓ or ✕ for each line (type a note instead of picking to keep a line with a note), then how the week felt, then runs `promptu week apply` and shows what applied and what failed. Nothing is pushed. Without Claude Code, do the same by hand: `promptu week show`, `promptu week mark l2 --verdict cut`, `promptu week mark --feel better`, `promptu week apply`. If `promptu` is not on `PATH`, the skill says so in one line and changes nothing.
 
 ## What comes next
 
-A weekly review of what the patterns got wrong: a ✓/✕ sheet as a Markdown file, applied with `promptu week apply` or reviewed with a `/promptu:review` skill, and shown in EmbArch's Desk when that is there. Then more reference kinds for EmbArch chat's linker. (The pass inside EmbArch's chat panel, with its Memory and Promptu menus, is EmbArch chat's own; it runs this CLI.)
+A weekly review of what the patterns got wrong: a ✓/✕ sheet as a Markdown file, applied with `promptu week apply` or reviewed with the `/embarch-promptu:review` skill, and shown in EmbArch's Desk when that is there. Then more reference kinds for EmbArch chat's linker. (The pass inside EmbArch's chat panel, with its Memory and Promptu menus, is EmbArch chat's own; it runs this CLI.)
 
 ## Docs
 
