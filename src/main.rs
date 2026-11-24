@@ -25,6 +25,7 @@ mod run;
 mod sha1;
 mod state;
 mod used;
+mod week;
 
 use checks::{Before, Finding, Severity};
 use clap::{Parser, Subcommand};
@@ -140,6 +141,11 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// The weekly pass (docs/contract.md §14): `pack` builds the week's events, with no model.
+    Week {
+        #[command(subcommand)]
+        action: WeekAction,
+    },
     /// Check pattern files: schema, AskUserQuestion's limits, slots, examples (§7.7).
     Lint {
         /// Pattern files or a folder; none: the patterns this binary carries (or PROMPTU_PATTERNS).
@@ -152,6 +158,21 @@ enum Cmd {
         /// Render the examples with these EmbArch parts only: desk, embarch-api (default: both; `none`).
         #[arg(long, value_delimiter = ',')]
         have: Option<Vec<String>>,
+    },
+}
+
+#[derive(Subcommand)]
+enum WeekAction {
+    /// Write the week's events (runs, with each one's footer and the owner's edit) to `week/<week>/pack.json`. No model, no network (§14.4).
+    Pack {
+        /// An ISO week `YYYY-Www`, local time; default: the week of today.
+        #[arg(long)]
+        week: Option<String>,
+        /// A Claude Code `projects/` folder of transcripts; default: the config home's.
+        #[arg(long)]
+        projects: Option<PathBuf>,
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -184,6 +205,7 @@ fn main() {
                 Cmd::Prep { pattern, rec, desk, offline, have, start, context_usage } => run_prep(prep::PrepArgs { pattern, rec, desk, offline, have, start, context_usage }),
                 Cmd::Calls { session, subagent, class, json } => run_calls(&session, subagent.as_deref(), class.as_deref(), json),
                 Cmd::Prior { prompt, projects, json } => run_prior(&prompt, projects.as_deref(), json),
+                Cmd::Week { action: WeekAction::Pack { week, projects, json } } => run_week_pack(week, projects, json),
                 Cmd::Next { run } => run_next(&run),
                 Cmd::Render { run, rest, text } => run_render(&run, rest, text),
                 Cmd::Original { run, json } => run_original(&run, json),
@@ -254,6 +276,25 @@ fn run_calls(session: &str, subagent: Option<&str>, class: Option<&str>, json: b
         print!("{}", calls::render(&threads, class));
     }
     0
+}
+
+/// `promptu week pack` (§14.4): 0 written, 2 a bad `--week` or an unreadable `--projects`.
+fn run_week_pack(week: Option<String>, projects: Option<PathBuf>, json: bool) -> i32 {
+    debug_panic();
+    match week::pack(&week::Args { week, projects }) {
+        Ok(v) => {
+            if json {
+                println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+            } else {
+                print!("{}", week::text(&v));
+            }
+            0
+        }
+        Err(e) => {
+            eprintln!("promptu: {}", e.msg);
+            e.code
+        }
+    }
 }
 
 fn run_prior(prompt: &Path, projects: Option<&Path>, json: bool) -> i32 {

@@ -5,7 +5,7 @@
 //! - `runs/<run>.json`: one run between `prep` and `render`; pruned after 7 days.
 //! - `last/<project>.json`: each pattern's last answers in one project, the
 //!   `last` source. `<project>` is the main checkout's memory-folder name.
-//! - `drafts/<run>.md`: the rendered prompt, for "edit first".
+//! - `drafts/<run>.md`: the rendered prompt, for "edit first"; kept past 7 days until a `week pack` has covered its date, at most 35 (forks W8).
 //! - `log/<run>.json`: one entry per rendered run, the rough prompt as typed, what
 //!   landed in the draft, the rewrite's model and wait (decision 42). Never pruned.
 //! - `pass/`: an empty folder the model call runs in.
@@ -24,7 +24,7 @@ fn ensure(p: &Path) -> Result<(), String> {
 }
 
 /// Write a file whole: a temporary beside it, then a rename.
-fn write_atomic(path: &Path, text: &str) -> Result<(), String> {
+pub(crate) fn write_atomic(path: &Path, text: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         ensure(parent)?;
     }
@@ -55,13 +55,43 @@ pub fn load_run(id: &str) -> Result<Option<Run>, String> {
     serde_json::from_str(&text).map(Some).map_err(|e| format!("{}: {e}", p.display()))
 }
 
-/// Delete run and draft files older than `days`.
+/// How long a draft may outlive the runs' `days` while no pack has covered its
+/// date (docs/forks.md W8).
+const DRAFT_MAX_DAYS: u64 = 35;
+
+/// The last date a successful `promptu week pack` covered (`week/packed.json`).
+pub fn packed_through() -> Option<chrono::NaiveDate> {
+    let text = std::fs::read_to_string(dir().ok()?.join("week").join("packed.json")).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    chrono::NaiveDate::parse_from_str(v.get("through")?.as_str()?, "%Y-%m-%d").ok()
+}
+
+/// The date a run id starts with (`YYYYMMDD-…`).
+fn run_id_date(id: &str) -> Option<chrono::NaiveDate> {
+    chrono::NaiveDate::parse_from_str(id.get(..8)?, "%Y%m%d").ok()
+}
+
+/// Delete run files older than `days`, and draft files too, except that a
+/// draft is kept until a `week pack` has covered its run's date, and at most
+/// 35 days (docs/forks.md W8): it is a terminal run's edit baseline.
 pub fn prune(days: u64) {
     let Ok(base) = dir() else { return };
     let cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(days * 86_400);
+    let draft_cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(days.max(DRAFT_MAX_DAYS) * 86_400);
+    let through = packed_through();
     for sub in ["runs", "drafts"] {
         for e in std::fs::read_dir(base.join(sub)).into_iter().flatten().flatten() {
-            let old = e.metadata().and_then(|m| m.modified()).is_ok_and(|t| t < cutoff);
+            let Some(modified) = e.metadata().and_then(|m| m.modified()).ok() else { continue };
+            let old = if sub == "drafts" {
+                let stem = e.path().file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+                let packed = match (through, run_id_date(&stem)) {
+                    (Some(t), Some(d)) => d <= t,
+                    _ => true,
+                };
+                modified < draft_cutoff || (modified < cutoff && packed)
+            } else {
+                modified < cutoff
+            };
             if old {
                 let _ = std::fs::remove_file(e.path());
             }

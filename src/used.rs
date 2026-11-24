@@ -42,8 +42,13 @@ pub struct Uses {
 /// top level only (a subagent's own transcript sits in a subfolder).
 fn transcripts(oldest: NaiveDate) -> Vec<PathBuf> {
     let Some(projects) = claude::config_dir().map(|c| c.join("projects")) else { return vec![] };
+    transcripts_in(&projects, oldest)
+}
+
+/// The same, under a given `projects` folder (`promptu week pack --projects`).
+pub(crate) fn transcripts_in(projects: &Path, oldest: NaiveDate) -> Vec<PathBuf> {
     let mut out = vec![];
-    for dir in std::fs::read_dir(&projects).into_iter().flatten().flatten() {
+    for dir in std::fs::read_dir(projects).into_iter().flatten().flatten() {
         if !dir.file_type().is_ok_and(|t| t.is_dir()) {
             continue;
         }
@@ -61,7 +66,7 @@ fn transcripts(oldest: NaiveDate) -> Vec<PathBuf> {
     out
 }
 
-fn mtime_date(p: &Path) -> Option<NaiveDate> {
+pub(crate) fn mtime_date(p: &Path) -> Option<NaiveDate> {
     let t = std::fs::metadata(p).and_then(|m| m.modified()).ok()?;
     Some(chrono::DateTime::<chrono::Local>::from(t).date_naive())
 }

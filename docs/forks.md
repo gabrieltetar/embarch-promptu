@@ -483,3 +483,23 @@ Decision 45 says `status` computes it; the grace is open.
 - (c) A failed run counts as missed.
 
 **Recommendation: (a).** Two hours is an assumed value; a laptop that wakes at 09:00 should not read as missed.
+
+### W10. "Other" text after a run's state file is pruned — open
+
+A footer says `board:other`, not what the owner typed. The text is in `runs/<run>.json`, which `prep` prunes after 7 days, while a pack reads a window of seven days plus the run's day.
+
+- **(a) Read it from `runs/<run>.json` when the file is still there, and say nothing when it is not** — *provisional default.* No new state; the oldest day of a window may lack the text.
+- (b) Copy the answers into `log/<run>.json` at `render`, which is never pruned: the text always survives, and the log grows by the owner's typed words.
+- (c) Keep `runs/` until packed, as W8 does for drafts.
+
+**Recommendation: (b)**, once the owner has run a real week and seen whether the missing text matters. It was not made the default because it changes the log's shape (§8.4) for every run.
+
+### W11. A draft with no transcript evidence — open
+
+A terminal run's `drafts/<run>.md` is its edit baseline (decision 44), but `render` writes a draft for a chat run too, so a draft alone does not say the prompt was sent.
+
+- **(a) A draft that differs from `rendered` is an edit (`source: "draft"`); one equal to it says nothing, and the run is `sent: null`** — *provisional default.* A changed file was changed on purpose.
+- (b) Any draft counts as the sent prompt, equal or not: no run with a draft is `unknown`, and a chat run never sent counts as an unedited send.
+- (c) Ignore a draft unless the transcript shows a terminal question.
+
+**Recommendation: (a).** (b) invents a send; (c) loses the edit of a terminal run whose transcript is outside the 30 days or was cleaned.

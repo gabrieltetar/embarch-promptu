@@ -173,6 +173,44 @@ pub fn state_dir() -> Option<PathBuf> {
     Some(base.join("embarch-promptu"))
 }
 
+/// `<mon|tue|wed|thu|fri|sat|sun> <HH:MM>` (contract §14.2).
+pub fn parse_schedule(s: &str) -> Option<(chrono::Weekday, u32, u32)> {
+    let mut it = s.split_whitespace();
+    let day = match it.next()?.to_ascii_lowercase().as_str() {
+        "mon" => chrono::Weekday::Mon,
+        "tue" => chrono::Weekday::Tue,
+        "wed" => chrono::Weekday::Wed,
+        "thu" => chrono::Weekday::Thu,
+        "fri" => chrono::Weekday::Fri,
+        "sat" => chrono::Weekday::Sat,
+        "sun" => chrono::Weekday::Sun,
+        _ => return None,
+    };
+    let (h, m) = it.next()?.split_once(':')?;
+    let (h, m): (u32, u32) = (h.parse().ok()?, m.parse().ok()?);
+    if it.next().is_some() || h > 23 || m > 59 || h.to_string().len() > 2 || m.to_string().len() > 2 {
+        return None;
+    }
+    Some((day, h, m))
+}
+
+/// The weekly schedule: `PROMPTU_WEEK_SCHEDULE`, else `week_schedule`, else
+/// Wednesday 08:00 (decision 45). The text is a warning when a set value is bad.
+pub fn week_schedule(t: &toml::Table) -> ((chrono::Weekday, u32, u32), Option<String>) {
+    let default = (chrono::Weekday::Wed, 8, 0);
+    let set = std::env::var("PROMPTU_WEEK_SCHEDULE")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .or_else(|| t.get("week_schedule").and_then(|v| v.as_str()).map(str::to_string));
+    match set {
+        None => (default, None),
+        Some(v) => match parse_schedule(&v) {
+            Some(s) => (s, None),
+            None => (default, Some(format!("week_schedule `{}` is not `<mon..sun> <HH:MM>`; using wed 08:00", v.trim()))),
+        },
+    }
+}
+
 /// Today, local time; `PROMPTU_TODAY=YYYY-MM-DD` pins it for tests.
 pub fn today() -> NaiveDate {
     std::env::var("PROMPTU_TODAY")
@@ -205,6 +243,15 @@ mod tests {
         assert_eq!(parts(&t, &have), vec!["embarch-api"]);
         let t: toml::Table = toml::from_str("[embarch]\ndesk = \"maybe\"").unwrap();
         assert_eq!(parts(&t, &have), vec!["desk"], "anything else is auto");
+    }
+
+    #[test]
+    fn a_schedule_parses_and_a_bad_one_is_none() {
+        assert_eq!(parse_schedule("Wed 08:00"), Some((chrono::Weekday::Wed, 8, 0)));
+        assert_eq!(parse_schedule("sun 23:59"), Some((chrono::Weekday::Sun, 23, 59)));
+        for bad in ["", "wed", "wed 25:00", "someday 08:00", "wed 8:60", "wed 08:00 x"] {
+            assert_eq!(parse_schedule(bad), None, "{bad}");
+        }
     }
 
     #[test]

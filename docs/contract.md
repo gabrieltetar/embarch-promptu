@@ -713,7 +713,7 @@ Every event (§14.5) ends in one line of the sheet. By event: a run whose questi
 
 #### `promptu week pack [--week <week>] [--projects <dir>] [--json]`
 
-Reads `log/*.json`, `drafts/`, the transcripts of §5 (`<config home>/projects/*/*.jsonl`, top-level files, last modified within 30 days, never an `isSidechain` record, same reader as `used`; `--projects` replaces the folder), the pattern set, and the open sheet. Writes `week/<week>/pack.json` and `week/packed.json`. **No model, no network.** The week's window is the seven local days before the run's day (for a past `--week`, before that week's Monday plus the schedule's weekday), plus the carried events of §14.1 ([forks](forks.md) W1). Output: `{ "promptu": 1, "week", "pack": "<path>", "window": {"from","to"}, "runs": 31, "sessions": 18, "events": { "run": 31, "session": 18, "unmatched": 4, "outcome": 6, "carried": 3 } }`. Exit 0; 2 for a bad `--week` or an unreadable `--projects`.
+Reads `log/*.json`, `drafts/`, the transcripts of §5 (`<config home>/projects/*/*.jsonl`, top-level files, last modified within 30 days, never an `isSidechain` record, same reader as `used`; `--projects` replaces the folder), the pattern set, and the open sheet. Writes `week/<week>/pack.json` and `week/packed.json`. **No model, no network.** The week's window is the seven local days before the run's day (for a past `--week`, before that week's Monday plus the schedule's weekday), plus the carried events of §14.1 ([forks](forks.md) W1). Output (`--json`; the text view is the same counts): `{ "promptu": 1, "week", "pack": "<path>", "window": {"from","to"}, "runs": 31, "sessions": 18, "events": { "run": 31, "session": 18, "unmatched": 4, "outcome": 6, "carried": 3 } }`. Exit 0; 2 for a bad `--week` or an unreadable `--projects`. A bad `week_schedule` falls back to `wed 08:00` and is a `warnings` entry. **Built so far: the `run` events** (the first unit, EMB-273); `session`, `unmatched`, `outcome` and `carried` are counted `0` until EMB-274 builds them, and `week/packed.json`'s `through` is the window's last day.
 
 #### `promptu week draft [--week <week>] [--pack <path>] [--json]`
 
@@ -757,11 +757,22 @@ Writes the systemd user units from `week_schedule` (decision 45): `~/.config/sys
 { "id": "e1", "kind": "run", "run": "20251118-091500-3fa1", "date": "2025-11-18", "project": "-home-u-work-app",
   "pattern": "implement-issue", "version": 4, "mode": "prompt", "rewritten": true,
   "footer": "— promptu implement-issue@4 asked=… filled=… skipped=…", "asked": 3, "filled": 2, "skipped": 1, "assumed": 0,
+  "skipped_questions": ["timebox"], "assumed_questions": [],
+  "not_recommended": [ { "question": "board", "answer": "other" } ], "other_text": { "board": "the second one" },
   "changed_fills": ["flash"], "picked_by_owner": false,
-  "sent": { "source": "transcript", "session": "5b1c…", "at": "2025-11-18T09:16:40-06:00", "text": "…", "edit": "edited" } }
+  "sent": { "source": "transcript", "session": "5b1c…", "at": "2025-11-18T09:16:40-06:00", "text": "…" },
+  "edit": "edited", "diff": "@@ -3 +3 @@\n-fix it\n+fix it now\n" }
 ```
 
-`asked`, `filled`, `skipped`, `assumed` are the footer's counts (§6.1); `changed_fills` the `!` fills; `picked_by_owner` is `pick=owner`. **`sent`** is how the run's sent prompt was found (decision 44): the first owner message after the log's time, in a session of that project (its main checkout, §1.2), carrying the same footer line (`source: "transcript"`); a tie goes to the text closest to the log's `rendered`; if none, a terminal run's draft file (`source: "draft"`, its text the draft's); else `sent` is `null`. `edit` is `unchanged` (equal to `rendered` after trimming and folding line breaks), `edited`, or `unknown` when `sent` is `null`. The match is a heuristic on two identical quick runs in one project, and the record says `"tie": true` when it chose between candidates.
+`asked`, `filled`, `skipped`, `assumed` are the footer's counts (§6.1); `skipped_questions` and `assumed_questions` name them (an assumption is what Esc leaves); **`not_recommended`** lists each asked question whose code is not `rec` or `all`, with the code (`other`, `o2`, `o1+o3`); `other_text` is the "Other" text the owner typed, by question, read from `runs/<run>.json` and so **present only while that file survives its 7 days** ([forks](forks.md) W10); `changed_fills` the `!` fills (question ids); `picked_by_owner` is `pick=owner`. A rendered prompt with no footer line gets `footer: null` and zero counts.
+
+**`sent`** is how the run's sent prompt was found (decision 44), tried in this order:
+
+1. **The chat.** The first owner message after the log's time, in a session of that project (its main checkout, §1.2), carrying the run's footer line (`source: "transcript"`; `text` is the message). A tie between sessions goes to the text with the fewest changed lines against `rendered`, and the record says `"tie": true`. A message is matched to one run only, oldest run first.
+2. **The terminal.** A terminal `/promptu` run is never an owner message: its prompt runs after the `Send as is` / `Edit first` question (`AskUserQuestion`, an option labelled `Send as is…`). The pack finds the transcript tool result that shows the run's id (`render`'s output) and takes the next such question's answer (`source: "terminal"`, `choice`: `send_as_is`, `edit_first` or `cancelled`). `send_as_is` sent `rendered`; `edit_first` sent the draft file `drafts/<run>.md` as it stands (`text: null` and `edit: "unknown"` if it was pruned); `cancelled` sent nothing.
+3. **A changed draft** with no transcript evidence at all: `source: "draft"`, `edit: "edited"`. A draft equal to `rendered` says nothing about a send, and the run is `sent: null` ([forks](forks.md) W11).
+
+`edit` is `unchanged` (equal to `rendered` after trimming and folding `\r\n`), `edited`, or `unknown` when `sent` is `null`, the draft is gone or the owner cancelled. **`diff`** is present when `edit` is `edited`: the sent text against `rendered` as a line diff, `-` a line he removed, `+` one he added, one line of context, hunks headed `@@ -<old line> +<new line> @@`. The match is a heuristic on two identical quick runs in one project, and `tie` says when it chose.
 
 **`session`**: a session of the window's projects with a task start.
 
