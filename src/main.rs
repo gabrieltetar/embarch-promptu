@@ -25,6 +25,7 @@ mod run;
 mod sha1;
 mod state;
 mod used;
+mod draft;
 mod week;
 mod weekread;
 
@@ -180,6 +181,17 @@ enum WeekAction {
         #[arg(long)]
         json: bool,
     },
+    /// Turn the week's pack into the ✓/✕ sheet: the pass's one model call (§14.4). Writes `sheet.json`, `sheet.md`, `proposed/` and `run.json`.
+    Draft {
+        /// An ISO week `YYYY-Www`, local time; default: the week of today.
+        #[arg(long)]
+        week: Option<String>,
+        /// A pack file to draft from; default: the week's own, built first when missing.
+        #[arg(long)]
+        pack: Option<PathBuf>,
+        #[arg(long)]
+        json: bool,
+    },
     /// The last run, the next run, a missed run and the waiting sheet (§14.4). Read-only; never asks the scheduler.
     Status {
         #[arg(long)]
@@ -225,6 +237,7 @@ fn main() {
                 Cmd::Calls { session, subagent, class, json } => run_calls(&session, subagent.as_deref(), class.as_deref(), json),
                 Cmd::Prior { prompt, projects, json } => run_prior(&prompt, projects.as_deref(), json),
                 Cmd::Week { action: WeekAction::Pack { week, projects, json } } => run_week_pack(week, projects, json),
+                Cmd::Week { action: WeekAction::Draft { week, pack, json } } => run_week_draft(week, pack, json),
                 Cmd::Week { action: WeekAction::Status { json } } => run_week_status(json),
                 Cmd::Week { action: WeekAction::Show { week, json } } => run_week_show(week.as_deref(), json),
                 Cmd::Desk { json } => run_desk(json),
@@ -309,6 +322,25 @@ fn run_week_pack(week: Option<String>, projects: Option<PathBuf>, json: bool) ->
                 println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
             } else {
                 print!("{}", week::text(&v));
+            }
+            0
+        }
+        Err(e) => {
+            eprintln!("promptu: {}", e.msg);
+            e.code
+        }
+    }
+}
+
+/// `promptu week draft` (§14.4): 0 a sheet written, 1 the drafter failed (one line, no sheet), 2 a usage error.
+fn run_week_draft(week: Option<String>, pack: Option<PathBuf>, json: bool) -> i32 {
+    debug_panic();
+    match draft::draft(&draft::Args { week, pack }) {
+        Ok(v) => {
+            if json {
+                println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+            } else {
+                print!("{}", draft::text(&v));
             }
             0
         }

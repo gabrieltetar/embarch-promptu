@@ -132,6 +132,26 @@ pub fn rewrite_timeout(t: &toml::Table) -> std::time::Duration {
     std::time::Duration::from_secs(s as u64)
 }
 
+/// The weekly drafter's model (contract §14.2): any `claude --model` value; `opus` (decision 14).
+pub fn week_model(t: &toml::Table) -> String {
+    t.get("week_model").and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).unwrap_or("opus").to_string()
+}
+
+/// The weekly drafter's effort: `low`, `medium` or `high`; anything else is `medium`.
+pub fn week_effort(t: &toml::Table) -> &'static str {
+    match t.get("week_effort").and_then(|v| v.as_str()).map(|s| s.trim().to_ascii_lowercase()).as_deref() {
+        Some("low") => "low",
+        Some("high") => "high",
+        _ => "medium",
+    }
+}
+
+/// The weekly drafter's time limit, 60 to 3600 s; default 900 (forks W6).
+pub fn week_timeout(t: &toml::Table) -> std::time::Duration {
+    let s = t.get("week_timeout_s").and_then(|v| v.as_integer()).filter(|n| (60..=3600).contains(n)).unwrap_or(900);
+    std::time::Duration::from_secs(s as u64)
+}
+
 /// The global `CLAUDE.md` sections whose bullets join the memory source;
 /// `None` means every section.
 pub fn claude_md_sections(t: &toml::Table) -> Option<Vec<String>> {
@@ -232,6 +252,16 @@ mod tests {
         assert_eq!(pass_model(&t), "sonnet");
         assert_eq!(pass_timeout(&t).as_secs(), 15);
         assert_eq!(template_values(&t).len(), 2);
+    }
+
+    #[test]
+    fn week_settings_default_and_clamp() {
+        let t = toml::Table::new();
+        assert_eq!((week_model(&t).as_str(), week_effort(&t), week_timeout(&t).as_secs()), ("opus", "medium", 900));
+        let t: toml::Table = toml::from_str("week_model = \"sonnet\"\nweek_effort = \"HIGH\"\nweek_timeout_s = 120").unwrap();
+        assert_eq!((week_model(&t).as_str(), week_effort(&t), week_timeout(&t).as_secs()), ("sonnet", "high", 120));
+        let t: toml::Table = toml::from_str("week_timeout_s = 5\nweek_effort = \"max\"").unwrap();
+        assert_eq!((week_effort(&t), week_timeout(&t).as_secs()), ("medium", 900));
     }
 
     #[test]

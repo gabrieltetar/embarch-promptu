@@ -25,7 +25,7 @@ fn usage(msg: impl Into<String>) -> Fail {
 }
 
 /// `YYYY-Www` to its Monday.
-fn week_monday(week: &str) -> Option<NaiveDate> {
+pub(crate) fn week_monday(week: &str) -> Option<NaiveDate> {
     let (y, w) = week.split_once("-W")?;
     if y.len() != 4 || w.len() != 2 {
         return None;
@@ -33,7 +33,7 @@ fn week_monday(week: &str) -> Option<NaiveDate> {
     NaiveDate::from_isoywd_opt(y.parse().ok()?, w.parse().ok()?, Weekday::Mon)
 }
 
-fn week_of(d: NaiveDate) -> String {
+pub(crate) fn week_of(d: NaiveDate) -> String {
     let w = d.iso_week();
     format!("{}-W{:02}", w.year(), w.week())
 }

@@ -33,7 +33,7 @@ fn week_dir() -> Result<PathBuf, Fail> {
     Ok(state::dir().map_err(|e| fail(3, e))?.join("week"))
 }
 
-fn is_week_id(s: &str) -> bool {
+pub(crate) fn is_week_id(s: &str) -> bool {
     s.len() == 8 && s.get(4..6) == Some("-W") && s[..4].bytes().all(|b| b.is_ascii_digit()) && s[6..].bytes().all(|b| b.is_ascii_digit())
 }
 
@@ -57,7 +57,7 @@ fn read_json(path: &std::path::Path) -> Result<Option<Value>, Fail> {
 }
 
 /// The newest week folder whose sheet has `superseded_by: null` (§14.1).
-fn open_sheet() -> Result<Option<(String, Value)>, Fail> {
+pub(crate) fn open_sheet() -> Result<Option<(String, Value)>, Fail> {
     for w in weeks()? {
         if let Some(s) = read_json(&week_dir()?.join(&w).join("sheet.json"))? {
             if s["superseded_by"].is_null() {

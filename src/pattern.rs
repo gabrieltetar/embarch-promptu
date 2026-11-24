@@ -224,7 +224,7 @@ pub fn parse(file: &str, text: &str) -> Result<Pattern, String> {
 
 /// A loaded set: task patterns and fragments, each by name, plus the files
 /// that did not parse (lint reports them; everything else skips them).
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Set {
     pub patterns: BTreeMap<String, Pattern>,
     pub fragments: BTreeMap<String, Pattern>,

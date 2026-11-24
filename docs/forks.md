@@ -513,3 +513,31 @@ The chat's card shows "running now", and the contract's `run.json` had only `ok`
 - (c) Never report it: the card shows the last finished run only.
 
 **Recommendation: (a).** `week run` (EMB-277) writes the record; until it exists, `running` is always `false`. The two hours are assumed, not measured.
+
+### W13. The drafter's reply, and what a bad line costs — open
+
+The contract said a line that fails the guard is dropped, and the sheet's `status` has `failed`; the reply's shape was not fixed.
+
+- **(a) The reply is `{ "lines": [...], "patterns": { "<name>": "<whole file>" } }`, one whole file per changed pattern shared by every line that changes it. A line with no kind, no text or no pack event is dropped and counted; a line whose target does not exist, whose proposed file fails to parse or lint, or whose memory file fails the T checks stays as `failed` with its error** — *provisional default.* The owner sees what the drafter tried and why it failed; a failed line is retried by `apply` and carries over (§10).
+- (b) Drop every failing line and count it, as §14.2 first said: a cleaner sheet, but a good idea with a typo vanishes.
+- (c) One whole file per line: no shared file, but two lines on one pattern then conflict at `apply`.
+
+**Recommendation: (a).** Memory lines are written to `proposed/memory/<project>/<file>` rather than `proposed/<file>`, so a topic file never collides with a pattern of the same name.
+
+### W14. A `no-change` line starts cut — open
+
+Decision 14 says every event gets a proposal; most need no change. The contract left `no-change` lines `open` until marked.
+
+- **(a) A `no-change` line is written with `verdict: "cut"` and `status: "cut"`, reason in `text`** — *provisional default.* It never counts as waiting, so the Desk badge and `week status` count only real proposals; the owner can still `week mark ... --verdict approve` one he disagrees with.
+- (b) Leave them `open`: every event waits for a tick, and a week of 40 runs shows 40 open lines for nothing to do.
+
+**Recommendation: (a).** `week apply` ignores `no-change` lines either way.
+
+### W15. What a second draft carries — open
+
+`draft` supersedes the earlier open sheet (decision 46) and should carry its open and failed lines.
+
+- **(a) Supersede and keep the same week's marks now; carry the earlier sheet's open and failed lines when the pack holds `carried` events (EMB-274)** — *provisional default.* The pack is the account of the week, and the drafter re-proposes carried events like any other, so the carry needs no code in `draft` once the pack builds it.
+- (b) Have `draft` copy the earlier lines into the new sheet itself: works before EMB-274, but the drafter never sees them and cannot merge a carried line with a new one.
+
+**Recommendation: (a).** Until EMB-274 lands, a superseded sheet's open lines are not re-proposed.
