@@ -244,25 +244,27 @@ fn descend(dir: &Path, enc: &str, folder: &str, budget: &mut usize) -> Option<Pa
     if enc == folder {
         return Some(dir.to_path_buf());
     }
-    let mut children: Vec<PathBuf> = std::fs::read_dir(dir)
+    // Only a child whose encoded name continues the folder can match, so only
+    // those are charged against the budget; a crowded parent costs nothing.
+    let mut fitting: Vec<(PathBuf, String)> = std::fs::read_dir(dir)
         .ok()?
         .flatten()
         .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
-        .map(|e| e.path())
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            let next = if enc == "-" { format!("-{}", project_folder(&name)) } else { format!("{enc}-{}", project_folder(&name)) };
+            let fits = folder.starts_with(&next) && (folder.len() == next.len() || folder.as_bytes()[next.len()] == b'-');
+            fits.then(|| (e.path(), next))
+        })
         .collect();
-    children.sort();
-    for c in children {
+    fitting.sort();
+    for (c, next) in fitting {
         if *budget == 0 {
             return None;
         }
         *budget -= 1;
-        let name = c.file_name()?.to_string_lossy().to_string();
-        let next = if enc == "-" { format!("-{}", project_folder(&name)) } else { format!("{enc}-{}", project_folder(&name)) };
-        let fits = folder.starts_with(&next) && (folder.len() == next.len() || folder.as_bytes()[next.len()] == b'-');
-        if fits {
-            if let Some(found) = descend(&c, &next, folder, budget) {
-                return Some(found);
-            }
+        if let Some(found) = descend(&c, &next, folder, budget) {
+            return Some(found);
         }
     }
     None
@@ -346,6 +348,15 @@ mod tests {
         assert_eq!(normalize(Path::new("/a/b/../c/./d")), PathBuf::from("/a/c/d"));
     }
 
+    /// A scratch folder removed on drop, so a failed assert leaves nothing behind.
+    struct Scratch(PathBuf);
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     fn scratch(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(
             "promptu-claude-{tag}-{}-{}",
@@ -384,6 +395,7 @@ mod tests {
     #[test]
     fn a_folder_name_decodes_back_to_the_checkout_on_disk() {
         let d = scratch("dec");
+        let _guard = Scratch(d.clone());
         let target = d.join("my-repo.v2").join("inner");
         std::fs::create_dir_all(&target).unwrap();
         // A decoy the greedy first match would take: my/repo-v2 does not exist.
@@ -391,6 +403,18 @@ mod tests {
         let folder = project_folder(&target.to_string_lossy());
         assert_eq!(decode_folder(&folder), Some(target.clone()));
         assert_eq!(decode_folder("-no-such-place-anywhere-xyz"), None);
-        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn a_crowded_parent_does_not_hide_the_checkout() {
+        let d = scratch("crowd");
+        let _guard = Scratch(d.clone());
+        let target = d.join("zz-target").join("inner");
+        std::fs::create_dir_all(&target).unwrap();
+        for i in 0..3200 {
+            std::fs::create_dir_all(d.join(format!("a-sibling-{i:05}"))).unwrap();
+        }
+        let folder = project_folder(&target.to_string_lossy());
+        assert_eq!(decode_folder(&folder), Some(target));
     }
 }
