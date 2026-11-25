@@ -1,6 +1,6 @@
 # Promptu: design forks for the owner
 
-Choices the approved design does not settle, met while building. **No agent decides one.** An open fork runs on a provisional default, the most reversible one, until the owner picks; the default is marked. Ranked by consequence within each step. Step 1 (memory): F1–F10. Step 2 (the terminal pass): S1–S8. Step 3 (the chat, desk Start work, the Memory menu): P1–P19. Step 4 (the weekly pass): W1–W9, at the end.
+Choices the approved design does not settle, met while building. **No agent decides one.** An open fork runs on a provisional default, the most reversible one, until the owner picks; the default is marked. Ranked by consequence within each step. Step 1 (memory): F1–F10. Step 2 (the terminal pass): S1–S8. Step 3 (the chat, desk Start work, the Memory menu): P1–P19. Step 4 (the weekly pass): W1–W24. Step 5 (the 💡 linker's kinds): L1–L22, at the end.
 
 **Decided by the owner on 2026-10-29:** F1 (a), F2 (b), F3 (d) in `embarch-umbrella`, F4 (b); each is marked below and recorded as a numbered decision in `embarch-doc/embarch-promptu/decisions.md`. **F5–F10 are open.**
 
@@ -633,3 +633,149 @@ The replay is a model call per prompt per side, up to ten a pattern.
 - (c) No cap: the sheet's cost is then unbounded by the number of pattern lines.
 
 **Recommendation: (a),** and replace the 1.00 with twice the cost of the first real week's replays.
+
+## Step 5: the 💡 linker's kinds (EMB-403, 2026-11-25)
+
+Every choice below is the step 5 plan's recommendation as the filed issues state it, built unless the owner strikes it. Numbered `L<choice>` after the plan's own numbering; ranked by consequence, the riskiest five first, then in plan order. L1, L18, L19 and L21 are choices the plan made that no filed issue records.
+
+### L11. The cue-word gate — open, built on its recommendation (EMB-403)
+
+- **(a) A high-volume kind (sections, symbols, nodes, branches, worktrees, documents, and the bench's instruments, captures and traces) is offered only when the draft names one of its entries exactly or carries one of its cue words (§15.2); issues, PRs and projects are not gated** — *recommendation, built.*
+- (b) No gate, every kind scored on words alone: nothing is missed, but thousands of symbols and sections crowd the 12 lines and every draft pays for a longer cards prompt. (c) A gate on kinds alone with no per-kind words: simpler, but one word opens everything.
+
+**Recommendation: (a). The most consequential choice: a missing cue word hides a real match, a loose one fills the block. The cue lists are first guesses, not measured on real drafts; the review unit should read real drafts against them.**
+
+### L5. Core is read through the `embarch-api` CLI in the chat's folder — open, built on its recommendation (EMB-403)
+
+- **(a) The chat runs `embarch-api --json <verb>` (10 s limit, cached 5 minutes, only for the chat on screen, before a cards call); no binary, no config or an unreachable Core leaves the kind empty** — *recommendation, built.*
+- (b) The chat gets its own Core client: no spawn and no folder lookup, but a second client to keep in step, and a credential path the chat has not had. (c) Through an MCP tool: the chat is not an MCP client.
+
+**Recommendation: (a). It reuses the binary the chat already finds for `--have` (decision 36) and takes no lease. A stopped Core makes the instrument, capture and trace kinds silently absent.**
+
+### L3. One atlas verb, `embarch-atlas refs --json` — open, built on its recommendation (EMB-403)
+
+- **(a) A new read-only verb prints sections, symbols and nodes in one JSON read (§15.3); the chat does not read the atlas's files** — *recommendation, built.*
+- (b) The chat reads `toc.json`, `outline.json`, `kconfig.json` and `dt.json` itself: no new verb, but it re-implements which atlas is current and the worktree-to-main-clone rule. (c) The existing lookups per word: one answer at a time, markdown.
+
+**Recommendation: (a). One owner of the atlas's file shapes. The verb's cost on a large atlas is not yet measured.**
+
+### L10. The block's size: 12 lines and 3,600 characters — open, built on its recommendation (EMB-403)
+
+- **(a) `<references>`, 12 lines and 3,600 characters, up from decision 88's 8 and 2,400** — *recommendation, built.*
+- (b) Keep 8 and 2,400: the cards prompt stays as short as today, but five more kinds then share a block sized for two. (c) 20 lines and 6,000 characters: more recall, a longer Haiku prompt on every draft.
+
+**Recommendation: (a). Both numbers are assumed, not measured; they set the cost of every cards call.**
+
+### L2. The contract is written first — open, built on its recommendation (EMB-403)
+
+- **(a) §15 fixes the entry, the table and the three JSON shapes before any unit builds them, as decision 3 says** — *recommendation, built.*
+- (b) Let each unit define its own shape and reconcile in review: faster to start, and the chat, atlas, API and desk units then disagree.
+
+**Recommendation: (a). A shape fixed here costs a doc edit to change; one found wrong after four units cost four.**
+
+### L1. The plan's choice 1 is not recorded — open (EMB-403)
+
+The step 5 plan numbers 22 choices; the filed issues (EMB-404 to EMB-415) state 2 to 17, 20 and 22. Choice 1 is stated in none of them, so this fork records no default and no alternative: **the plan's choice 1 is not recorded in any filed issue and is the owner's to state.** Nothing is built on it until he does.
+
+### L4. Symbols and nodes from the atlas only — open, built on its recommendation (EMB-403)
+
+- **(a) A repo with no built atlas offers neither kind (§15.2)** — *recommendation, built.*
+- (b) Fall back to scanning `Kconfig` files and `.dts` in the repo: some answer without an atlas, but a second, weaker parser of what the atlas already reads.
+
+**Recommendation: (a).**
+
+### L6. A signal's live capture is not a kind — open, built on its recommendation (EMB-403)
+
+- **(a) Only a study's taps are `capture` and `trace`; a signal's live capture is left out** — *recommendation, built.*
+- (b) Offer declared signals' live captures too: more to point at, but a live capture is not a thing a later session can read back by id.
+
+**Recommendation: (a).**
+
+### L7. `list-studies --limit 20` — open, built on its recommendation (EMB-403)
+
+- **(a) The chat asks for the newest 20 studies** — *recommendation, built.*
+- (b) All retained studies: one entry per tap makes the list large and the old ones are rarely meant. (c) 5: cheaper, but a draft about last week's run finds nothing.
+
+**Recommendation: (a). The 20 is assumed.**
+
+### L8. Which Linear projects and documents the desk indexes — open, built on its recommendation (EMB-403)
+
+- **(a) A project-bound desk indexes that project, a team-bound desk the team's newest 200 projects (archived count, trashed do not); documents are those of the indexed projects, newest 500, titles and links only; a document outside an indexed project is left out** — *recommendation, built.*
+- (b) Every project and document in the workspace: more recall, a larger fetch on every refresh and other teams' names in a draft. (c) Projects only.
+
+**Recommendation: (a). The two caps are assumed.**
+
+### L9. Branches and worktrees from the chat folder's main clone — open, built on its recommendation (EMB-403)
+
+- **(a) The newest 300 branches over `refs/heads` and `refs/remotes/origin`, a remote with a local twin once, and every worktree, from the main clone** — *recommendation, built.*
+- (b) The current checkout only: misses the fan branch in another worktree. (c) Every clone under `~/Github`: far past what a chat is about.
+
+**Recommendation: (a).**
+
+### L12. Each kind's written form — open, built on its recommendation (EMB-403)
+
+- **(a) The forms in §15.2: short, one line, carrying the exact name a later session can look up (a doc id and page, a `CONFIG_` name, a study id and tap)** — *recommendation, built.*
+- (b) Add each kind's full detail (a symbol's value, a node's properties): a longer line, and a value the atlas holds only for its own commit. (c) A bare name: shortest, with no hint of what it is.
+
+**Recommendation: (a). The owner may rewrite any one form without touching the others.**
+
+### L13. One "References" submenu — open, built on its recommendation (EMB-403)
+
+- **(a) Every kind lands in the one submenu the issue and PR lines use today** — *recommendation, built.*
+- (b) A submenu per kind: easier to find a kind, but up to nine entries in a menu that has one today.
+
+**Recommendation: (a).**
+
+### L14. No prose links beyond decision 16's — open, built on its recommendation (EMB-403)
+
+- **(a) A written reference is text; only decision 16's atlas citations become links** — *recommendation, built.*
+- (b) Link each kind (a branch to its page, a project to Linear): useful, and it makes every written line a click target to maintain.
+
+**Recommendation: (a).**
+
+### L15. When each source refreshes — open, built on its recommendation (EMB-403)
+
+- **(a) The desk's kinds when `refs_ms` moves; git over 60 s old; the atlas when its `current.json`, `atlases/` or `docs/` changed; the CLI kinds after 5 minutes; all before a cards call, never on a keystroke** — *recommendation, built.*
+- (b) A timer per source: fresher, and work done for a chat nobody is drafting in. (c) Once at start: stale by the next branch.
+
+**Recommendation: (a). The 60 s and 5 minutes are assumed.**
+
+### L16. At most 4 lines per kind — open, built on its recommendation (EMB-403)
+
+- **(a) Four lines per kind before the best of the rest fill the 12** — *recommendation, built.*
+- (b) No per-kind cap: the best 12 overall, so one kind with many close matches can take the block. (c) 2 per kind: safer for issues and PRs, loses a second branch of the same name.
+
+**Recommendation: (a).**
+
+### L17. `list-studies` is not an MCP tool — open, built on its recommendation (EMB-403)
+
+- **(a) A CLI verb only** — *recommendation, built.*
+- (b) Also an MCP tool: an agent could list studies, but `list_study_streams` and `study_stream_load` already cover an agent that has an id, and a tool is permanent surface.
+
+**Recommendation: (a).**
+
+### L18. The plan's choice 18 is not recorded — open (EMB-403)
+
+The step 5 plan numbers 22 choices; the filed issues (EMB-404 to EMB-415) state 2 to 17, 20 and 22. Choice 18 is stated in none of them, so this fork records no default and no alternative: **the plan's choice 18 is not recorded in any filed issue and is the owner's to state.** Nothing is built on it until he does.
+
+### L19. The plan's choice 19 is not recorded — open (EMB-403)
+
+The step 5 plan numbers 22 choices; the filed issues (EMB-404 to EMB-415) state 2 to 17, 20 and 22. Choice 19 is stated in none of them, so this fork records no default and no alternative: **the plan's choice 19 is not recorded in any filed issue and is the owner's to state.** Nothing is built on it until he does.
+
+### L20. The instrument words — open, built on its recommendation (EMB-403)
+
+- **(a) An instrument is offered when the draft names one or carries instrument, supply, PSU, load, meter, multimeter, DMM, scope, oscilloscope, analyzer or SMU, since a declaration has only a name and a protocol to match** — *recommendation, built.*
+- (b) Always offer every declared instrument: a bench has few, but each draft then carries them. (c) Names only: misses "set the load".
+
+**Recommendation: (a).**
+
+### L21. The plan's choice 21 is not recorded — open (EMB-403)
+
+The step 5 plan numbers 22 choices; the filed issues (EMB-404 to EMB-415) state 2 to 17, 20 and 22. Choice 21 is stated in none of them, so this fork records no default and no alternative: **the plan's choice 21 is not recorded in any filed issue and is the owner's to state.** Nothing is built on it until he does.
+
+### L22. Real Haiku fixtures wait for the review unit — open, built on its recommendation (EMB-403)
+
+- **(a) The unit that changes the cards prompt leaves the recorded `cards-refs` fixture as it is; the review unit re-records against real Haiku (about $0.003 a call)** — *recommendation, built.*
+- (b) Each unit re-records its own: the fixture is always current, and eight units each spend and each hit a rate limit.
+
+**Recommendation: (a).**

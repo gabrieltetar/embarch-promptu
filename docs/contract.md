@@ -1,6 +1,6 @@
 # Promptu: the contract
 
-**Version 1, 2026-10-29.** The interfaces Promptu's five build steps share. Build step 1 (memory) owns §1–§5 and the memory id in §6.3; build step 2 (the terminal pass) owns §6's writer, §7 and §8; build step 3 (the chat and Start work) added `used` to §5, `prep --start` to §7.8 and `promptu patterns` (§7.9). All three are built and tested, and what §11 lists is fixed. **Build step 4 (the weekly pass, §9, §10 and §14)** is specified here before it is built (decision 3): its shapes are fixed from the day this contract says so, and the step that builds them may add to them but not change what §11 fixes. Its first-cut heuristics are provisional in [forks](forks.md) W1–W9.
+**Version 1, 2026-10-29.** The interfaces Promptu's five build steps share. Build step 1 (memory) owns §1–§5 and the memory id in §6.3; build step 2 (the terminal pass) owns §6's writer, §7 and §8; build step 3 (the chat and Start work) added `used` to §5, `prep --start` to §7.8 and `promptu patterns` (§7.9). All three are built and tested, and what §11 lists is fixed. **Build step 4 (the weekly pass, §9, §10 and §14)** is specified here before it is built (decision 3): its shapes are fixed from the day this contract says so, and the step that builds them may add to them but not change what §11 fixes. Its first-cut heuristics are provisional in [forks](forks.md) W1–W9. **Build step 5 (the chat's 💡 linker, §15)** is specified the same way: it changes no `promptu` command, file or JSON, and fixes the shapes the chat, the atlas, `embarch-api` and the desk code against; its choices are forks L1–L22.
 
 `[measured]` marks a fact checked against Claude Code 2.1.287 on 2026-10-29, either by running it or by reading its bundle; `[assumed]` marks one that was not. Every example is invented.
 
@@ -9,7 +9,7 @@
 - Every JSON document carries `"promptu": 1`. Adding a field keeps 1. Renaming or removing a field, or changing what one means, bumps it. Readers ignore fields they do not know.
 - Paths are absolute. A date is `YYYY-MM-DD` in local time; `PROMPTU_TODAY=YYYY-MM-DD` pins "today" for tests.
 - A command that can find problems exits 1 when it finds an error, 0 otherwise, and 2 on a usage error (a path that does not exist). Any command but `hook` exits 3 on an internal error, with one `promptu: internal error: <message> (at <file>:<line>:<column>)` line on stderr, never Rust's 101 (`hook` fails open instead, §3.6). A debug build honours `PROMPTU_DEBUG_PANIC` to reach that path in a test; a release build compiles it out.
-- No model call and no network in anything step 1 ships. Step 2's one model call is `prep`'s pass (§7.3); `lint`, `next` and `render` are model-free. Step 4's one model call is `promptu week draft` (§14.2); everything else under `week` and `desk` is model-free.
+- No model call and no network in anything step 1 ships. Step 2's one model call is `prep`'s pass (§7.3); `lint`, `next` and `render` are model-free. Step 4's one model call is `promptu week draft` (§14.2); everything else under `week` and `desk` is model-free. Step 5 adds no model call, command or network use to `promptu` (§15 is read surfaces other tools build).
 
 ## 1. Where memory lives
 
@@ -640,6 +640,7 @@ One week's ✓/✕ sheet, `week/<week>/sheet.json` (§14.1), written by `promptu
 - **From decision 42, fixed:** `promptu original`'s output and exit codes (§8.5), the log entry's fields (§8.4), the footer's `rewritten=yes`. `stats`' output may grow.
 - **From step 4, fixed:** the `week` commands' names, arguments, exit codes and the shape of their JSON (§14.4), `promptu desk --json` (§9), `sheet.json`'s fields, `kind`s, `verdict`s and `status`es (§10), the week folder's layout and each file's name (§14.1), the config keys' names and meaning (§14.2), the pack's record kinds and their fields (§14.5), and the timer units' names (§14.4). The first cut's heuristics, marked provisional in [forks](forks.md) W1–W9, are not fixed: they may change behind these shapes.
 - **Open until built:** nothing in §9–§10 and §14; step 4 may add to them within §0's rules.
+- **From step 5:** nothing in §0 to §14 changes. §15's reference entry, kinds table and the three read surfaces' JSON are fixed once the unit that builds each lands, and may grow by §0's rules. The table's caps, cue words and written forms are the plan's recommendations, forks L1–L22: the owner may strike any, and a struck row changes §15 first.
 
 ## 12. `promptu calls <session> [--subagent <id>] [--class <name>] [--json]`
 
@@ -818,3 +819,79 @@ A `git commit` call in the session's own transcript or in one of its subagents' 
 **`carried`**: an event from an earlier open sheet, re-proposed (decision 46): `{ "id": "e5", "kind": "carried", "from": "2026-W47:l3", "line": { "kind", "target", "change", "text", "status", "error" }, "events": [ <the earlier line's event records, quotes included> ] }`. **Built (EMB-274):** one per `open` or `failed` line of the earlier sheet, which is the sheet this week's own sheet supersedes if it has one, else the newest open sheet of an earlier week; `events` are quoted from that week's `pack.json` by id (an id its pack lacks is left out), and `line` is there so a line whose pack is gone still reaches the drafter ([forks](forks.md) W15). The drafter's `numbers` do not yet read the session events.
 
 The pack's counts feed `numbers` (§10): `fills_kept` is one minus the share of `filled` entries marked `!`; `patterns_kept` is one minus the share of runs with `pick=owner`; `questions_per_run` the mean of `asked`; `friction_per_prompt` the redirects the drafter kept per owner prompt in `promptu` sessions, against the same in the others as the control (decision 15); `redirects_per_task` the redirect count per session.
+
+## 15. The linker's kinds (build step 5)
+
+Build step 5 (decision 16) gives the chat's 💡 linker more kinds of reference than issues and PRs. The linker is `embarch-chat`'s code; this section fixes what every unit that builds a part of it codes against. It is specified before it is built (decision 3); the choices behind it are forks L1–L22 in [forks](forks.md).
+
+### 15.1 The reference entry
+
+A source gives the chat's linker entries, one per line it may offer:
+
+- `kind`: `issue`, `pr`, `project`, `document`, `branch`, `worktree`, `section`, `symbol`, `node`, `instrument`, `capture` or `trace`.
+- `key`: unique within its kind (an issue key, a PR number, a Linear id, a branch name, a worktree path, `<doc>#<section id>`, a symbol name, a node path, an instrument name, `<study id>/<tap name>`).
+- `words`: what the entry is matched on (title, name, prompt, labels, as the kind's row says).
+- `names`: the exact strings a draft may use for it (`CONFIG_<NAME>`, `&<label>`, a URL); an exact name offers the entry with no cue word.
+- `line`: the text the block shows, after `[r<n>] <kind>: `.
+- `text(find)`: the text that replaces the phrase a card names. It is written by the extension from the entry, never from the model's words.
+
+Entries of one kind are scored among that kind (a word's rarity counts within the kind, so thousands of symbols do not drown a PR); the kinds are then merged best first. Issues and PRs behave as `embarch-chat` decision 88 says.
+
+### 15.2 The block and the kinds
+
+The block is `<references>`: at most 12 lines and 3,600 characters, at most 4 lines per kind before the best of the rest fill it. Each line is `[r<n>] <kind>: <line>`. A **gated** kind is offered only when the draft names one of its entries exactly or carries one of its cue words (case-insensitive, whole word). The prompt's rule names only the kinds present in the block. One "References" submenu holds every kind; the written forms add no prose link beyond decision 16's atlas citations.
+
+| Kind | Source | Refresh | Cue words (gated unless "none") | Written form |
+|---|---|---|---|---|
+| `issue`, `pr` | the desk's `GET /refs` | when `/view`'s `refs_ms` moves | none (decision 88's word match) | as decision 88 writes them |
+| `project` | the desk's `projects` | the same | none | `Linear project "<name>" (<url>)` |
+| `document` | the desk's `documents` | the same | doc, document, notes, write-up, spec, design, RFC, page, or a document URL | `Linear doc "<title>" (<project>, <url>)` |
+| `branch` | git, the chat folder's main clone: the newest 300 local and `origin` branches | before a cards call, when the last read is over 60 s old | branch, worktree, checkout, clone, rebase, merge | `branch <name>`, plus ` (PR owner/repo#N)` when the desk has one |
+| `worktree` | `git worktree list --porcelain` | the same | the same | `worktree <absolute path> (branch <name>)` |
+| `section` | `embarch-atlas refs --json` | 10 s limit; re-run only when the atlas's `current.json`, `atlases/` or `docs/` changed | datasheet, spec, specification, standard, section, chapter, table, manual, errata, app note, or the document's part | `<doc> p<page> §<id> "<title>"` |
+| `symbol` | the same read, current atlas only | the same | Kconfig, config, option, symbol, setting, `prj.conf`, menuconfig | `CONFIG_<NAME> ("<prompt>")`, no value |
+| `node` | the same | the same | devicetree, DT, node, overlay, DTS, binding, compatible, alias, chosen | `&<label> (<path>, <compatible>)`; the path alone with no label |
+| `instrument` | `embarch-api --json list-instruments`, run in the chat's folder | 10 s limit, cached 5 min, only for the chat on screen, before a cards call | instrument, supply, PSU, load, meter, multimeter, DMM, scope, oscilloscope, analyzer, SMU, or a name | `instrument "<name>" (<protocol>)` |
+| `capture`, `trace` | `embarch-api --json list-studies --limit 20` | the same | capture, trace, recording, stream, tap, study, run, samples, log, or a study id | `trace "<tap>" of study <id> "<study name>" (OutpostTrace, <YYYY-MM-DD>)`; a `capture` names its `encoding_kind` in place of `OutpostTrace`; ` not rendered` is added when `rendered` is false |
+
+Rules the table does not carry:
+
+- A source that cannot answer (no binary, no atlas, a failed run, no config) leaves its kind empty and logs once per cause. A repo with no built atlas offers no symbols or nodes; sections come from translated documents and exist without one. A stale atlas still offers, and the card's `why` says it is at an older commit.
+- The chat's own branch and worktree are never offered. A title or name is anyone's to write, so it is quoted, clipped and checked by the chat as an issue title is.
+- A `trace` is a tap whose `encoding_kind` is `outpost_trace`; every other tap is a `capture`. A signal's live capture is not a kind. With last, latest, yesterday or today in the draft, newer studies score first.
+- `list-studies` is a CLI verb for the linker and a terminal; it is not an MCP tool.
+
+### 15.3 The three read surfaces
+
+Each is built by its own unit; every document carries its own marker, not `"promptu": 1`, because the tool that prints it is not Promptu.
+
+**`embarch-atlas refs [--json] [--atlas-dir D] [--atlas <id>]`** (read-only, no model, no network, nothing written):
+
+```
+{"atlas_refs": 1, "atlas_dir": "<path>"|null, "atlas": "<target>@<commit12>"|null,
+ "commit": "<sha>", "stale": [...],
+ "sections": [{"doc", "kind", "part", "id", "title", "level", "page"}],
+ "symbols": [{"name", "prompt", "type"}],
+ "nodes": [{"path", "labels", "compats", "status", "aliases"}]}
+```
+
+`page` is the first physical page; `prompt` is null when a symbol has none. No atlas folder gives `atlas_dir` and `atlas` null, empty lists and exit 0. `stale` holds the reasons the lookups give.
+
+**`embarch-api --json list-studies [--limit N]`** (takes no lease), newest first by `started_utc_ms`, a study with none after those that have one:
+
+```
+{"success": true, "keep",
+ "studies": [{"study_id", "study_name", "status", "started_utc_ms", "ended_utc_ms",
+   "taps": [{"name", "encoding", "encoding_kind", "rendered"}] | null, "note"}]}
+```
+
+`encoding` is Core's value as it comes; `encoding_kind` is `raw`, `text`, `samples`, `gatt_transcript` or `outpost_trace`. `taps` is null, never empty, where Core could not read them.
+
+**The desk's `GET /refs`** gains
+
+```
+"projects": [{"id", "name", "state", "url", "team_keys"}],
+"documents": [{"id", "title", "url", "project_id", "project_name", "updated_ms"}]
+```
+
+Projects are the desk's scope's (newest 200 by update); documents are those of the indexed projects (newest 500), titles and links only, never their text. An older desk omits both keys and a reader takes them as empty.
